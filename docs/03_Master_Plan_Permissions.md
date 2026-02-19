@@ -18,3 +18,8 @@
 ### Task 1.2: Commit changes
 * [ ] **Agent Prompt:**
   > "قم بعمل `git commit` نظيف يحمل الرسالة التالية: `feat(permissions): add createRequest with limit validation`. ولا تدمجه في الـ Main إلا بعد موافقة مدير المشروع."
+
+## Milestone 2: Frontend UI & API Integration
+
+### Task 2.1: Build Permissions Form Component
+* [ ] **Agent Prompt:** إنشاء صفحة/مكون لنموذج الاستئذان باستخدام React و Tailwind، وربطه بالخادم. معالجة حالات الخطأ (خاصة 422 Limit Exceeded) وعرضها للمستخدم بطريقة احترافية.
