@@ -5,29 +5,29 @@ import { base44 } from "@/api/base44Client";
 import { PERMISSIONS } from "@/components/permissions";
 import { useAuth } from "@/components/AuthProvider";
 import {
-LayoutDashboard,
-Users,
-FileText,
-Clock,
-Calendar,
-BarChart3,
-Settings,
-Menu,
-X,
-ChevronDown,
-LogOut,
-User,
-Building2,
-Briefcase,
-GraduationCap,
-Bell,
-MapPin,
-Building,
-CalendarCheck,
-Gift,
-Shield,
-DollarSign,
-Code,
+  LayoutDashboard,
+  Users,
+  FileText,
+  Clock,
+  Calendar,
+  BarChart3,
+  Settings,
+  Menu,
+  X,
+  ChevronDown,
+  LogOut,
+  User,
+  Building2,
+  Briefcase,
+  GraduationCap,
+  Bell,
+  MapPin,
+  Building,
+  CalendarCheck,
+  Gift,
+  Shield,
+  DollarSign,
+  Code,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,8 +61,8 @@ function LayoutContent({ children, currentPageName }) {
 
   const navItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: createPageUrl("Dashboard"), label: "لوحة التحكم", permission: PERMISSIONS.VIEW_DASHBOARD },
-    { 
-      label: "الموظفين", 
+    {
+      label: "الموظفين",
       icon: Users,
       items: [
         { name: "Employees", icon: Users, path: createPageUrl("Employees"), label: "قائمة الموظفين", permission: PERMISSIONS.VIEW_ALL_EMPLOYEES },
@@ -86,6 +86,7 @@ function LayoutContent({ children, currentPageName }) {
       icon: CalendarCheck,
       items: [
         { name: "CheckInOut", icon: Clock, path: createPageUrl("CheckInOut"), label: "تسجيل الحضور", permission: PERMISSIONS.CHECKIN_CHECKOUT },
+        { name: "Permissions", icon: FileText, path: createPageUrl("Permissions"), label: "طلب استئذان" },
         { name: "Attendance", icon: CalendarCheck, path: createPageUrl("Attendance"), label: "سجل الحضور", permission: PERMISSIONS.VIEW_ALL_ATTENDANCE },
         { name: "Leaves", icon: Calendar, path: createPageUrl("Leaves"), label: "الإجازات", permission: PERMISSIONS.VIEW_ALL_LEAVES },
       ]
@@ -175,18 +176,18 @@ function LayoutContent({ children, currentPageName }) {
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {navItems.filter(item => !item.permission || hasPermission(item.permission)).map((item, idx) => {
-                if (item.items) {
-                  const visibleItems = item.items.filter(subItem => !subItem.permission || hasPermission(subItem.permission));
-                  if (visibleItems.length === 0) return null;
+              if (item.items) {
+                const visibleItems = item.items.filter(subItem => !subItem.permission || hasPermission(subItem.permission));
+                if (visibleItems.length === 0) return null;
 
-                  return (
-                    <div key={idx} className="space-y-1">
-                      {!sidebarCollapsed && (
-                        <p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
-                          {item.label}
-                        </p>
-                      )}
-                      {visibleItems.map((subItem) => {
+                return (
+                  <div key={idx} className="space-y-1">
+                    {!sidebarCollapsed && (
+                      <p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
+                        {item.label}
+                      </p>
+                    )}
+                    {visibleItems.map((subItem) => {
                       const isActive = subItem.name === activeItem;
                       return (
                         <Link

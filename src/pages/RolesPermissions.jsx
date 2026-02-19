@@ -22,12 +22,12 @@ import { toast } from "sonner";
 
 const ALL_PERMISSIONS = [
   { code: "view_dashboard", name: "عرض لوحة التحكم", category: "dashboard", scope: false },
-  
+
   { code: "view_employees", name: "عرض الموظفين", category: "employees", scope: true },
   { code: "add_employees", name: "إضافة موظفين", category: "employees", scope: false },
   { code: "edit_employees", name: "تعديل موظفين", category: "employees", scope: true },
   { code: "delete_employees", name: "حذف موظفين", category: "employees", scope: true },
-  
+
   { code: "view_contracts", name: "عرض العقود", category: "contracts", scope: true },
   { code: "add_contracts", name: "إضافة عقود", category: "contracts", scope: false },
   { code: "edit_contracts", name: "تعديل عقود", category: "contracts", scope: true },
@@ -37,7 +37,7 @@ const ALL_PERMISSIONS = [
   { code: "approve_contract_gm", name: "اعتماد العقد - المدير العام", category: "contracts", scope: false },
   { code: "approve_contract_hr", name: "اعتماد العقد - الموارد البشرية", category: "contracts", scope: false },
   { code: "approve_contract_finance", name: "اعتماد العقد - المحاسب العام", category: "contracts", scope: false },
-  
+
   { code: "view_trainings", name: "عرض التدريب", category: "trainings", scope: true },
   { code: "add_trainings", name: "إضافة تدريب", category: "trainings", scope: false },
   { code: "edit_trainings", name: "تعديل تدريب", category: "trainings", scope: true },
@@ -47,7 +47,7 @@ const ALL_PERMISSIONS = [
   { code: "approve_training_gm", name: "اعتماد التدريب - المدير العام", category: "trainings", scope: false },
   { code: "approve_training_hr", name: "اعتماد التدريب - الموارد البشرية", category: "trainings", scope: false },
   { code: "approve_training_finance", name: "اعتماد التدريب - المحاسب العام", category: "trainings", scope: false },
-  
+
   { code: "view_resignations", name: "عرض طلبات الاستقالة", category: "resignations", scope: true },
   { code: "add_resignation", name: "تقديم طلب استقالة", category: "resignations", scope: false },
   { code: "edit_resignation", name: "تعديل طلب استقالة", category: "resignations", scope: true },
@@ -57,24 +57,24 @@ const ALL_PERMISSIONS = [
   { code: "approve_resignation_gm", name: "اعتماد الاستقالة - المدير العام", category: "resignations", scope: false },
   { code: "approve_resignation_hr", name: "اعتماد الاستقالة - الموارد البشرية", category: "resignations", scope: false },
   { code: "approve_resignation_finance", name: "اعتماد الاستقالة - المحاسب العام", category: "resignations", scope: false },
-  
+
   { code: "view_organizational_structure", name: "عرض الهيكل الإداري", category: "organizational_structure", scope: false },
   { code: "add_organizational_structure", name: "إضافة في الهيكل الإداري", category: "organizational_structure", scope: false },
   { code: "edit_organizational_structure", name: "تعديل الهيكل الإداري", category: "organizational_structure", scope: false },
   { code: "delete_organizational_structure", name: "حذف من الهيكل الإداري", category: "organizational_structure", scope: false },
-  
+
   { code: "view_work_locations", name: "عرض أماكن العمل", category: "work_locations", scope: false },
   { code: "add_work_locations", name: "إضافة أماكن العمل", category: "work_locations", scope: false },
   { code: "edit_work_locations", name: "تعديل أماكن العمل", category: "work_locations", scope: false },
   { code: "delete_work_locations", name: "حذف أماكن العمل", category: "work_locations", scope: false },
-  
+
   { code: "checkin_checkout", name: "تسجيل الحضور والانصراف", category: "checkin", scope: false },
-  
+
   { code: "view_attendance", name: "عرض سجل الحضور", category: "attendance", scope: true },
   { code: "add_attendance", name: "إضافة حضور", category: "attendance", scope: false },
   { code: "edit_attendance", name: "تعديل حضور", category: "attendance", scope: true },
   { code: "delete_attendance", name: "حذف حضور", category: "attendance", scope: true },
-  
+
   { code: "view_leaves", name: "عرض الإجازات", category: "leaves", scope: true },
   { code: "add_leaves", name: "إضافة إجازة", category: "leaves", scope: false },
   { code: "edit_leaves", name: "تعديل إجازة", category: "leaves", scope: true },
@@ -84,12 +84,12 @@ const ALL_PERMISSIONS = [
   { code: "approve_leave_gm", name: "اعتماد الإجازة - المدير العام", category: "leaves", scope: false },
   { code: "approve_leave_hr", name: "اعتماد الإجازة - الموارد البشرية", category: "leaves", scope: false },
   { code: "approve_leave_finance", name: "اعتماد الإجازة - المحاسب العام", category: "leaves", scope: false },
-  
+
   { code: "view_payroll", name: "عرض الرواتب", category: "payroll", scope: true },
   { code: "add_payroll", name: "إضافة رواتب", category: "payroll", scope: false },
   { code: "edit_payroll", name: "تعديل رواتب", category: "payroll", scope: true },
   { code: "delete_payroll", name: "حذف رواتب", category: "payroll", scope: true },
-  
+
   { code: "view_bonuses", name: "عرض المكافآت", category: "bonuses", scope: true },
   { code: "add_bonuses", name: "إضافة مكافآت", category: "bonuses", scope: false },
   { code: "edit_bonuses", name: "تعديل مكافآت", category: "bonuses", scope: true },
@@ -99,7 +99,7 @@ const ALL_PERMISSIONS = [
   { code: "approve_bonus_gm", name: "اعتماد المكافأة - المدير العام", category: "bonuses", scope: false },
   { code: "approve_bonus_hr", name: "اعتماد المكافأة - الموارد البشرية", category: "bonuses", scope: false },
   { code: "approve_bonus_finance", name: "اعتماد المكافأة - المحاسب العام", category: "bonuses", scope: false },
-  
+
   { code: "view_overtime", name: "عرض الساعات الإضافية", category: "overtime", scope: true },
   { code: "add_overtime", name: "إضافة ساعات إضافية", category: "overtime", scope: false },
   { code: "edit_overtime", name: "تعديل ساعات إضافية", category: "overtime", scope: true },
@@ -109,7 +109,17 @@ const ALL_PERMISSIONS = [
   { code: "approve_overtime_gm", name: "اعتماد الساعات - المدير العام", category: "overtime", scope: false },
   { code: "approve_overtime_hr", name: "اعتماد الساعات - الموارد البشرية", category: "overtime", scope: false },
   { code: "approve_overtime_finance", name: "اعتماد الساعات - المحاسب العام", category: "overtime", scope: false },
-  
+
+  { code: "view_permission_requests", name: "عرض الاستئذانات", category: "permission_requests", scope: true },
+  { code: "add_permission_requests", name: "إضافة استئذان", category: "permission_requests", scope: false },
+  { code: "edit_permission_requests", name: "تعديل استئذان", category: "permission_requests", scope: true },
+  { code: "delete_permission_requests", name: "حذف استئذان", category: "permission_requests", scope: true },
+  { code: "approve_permission_requests_manager", name: "اعتماد الاستئذان - المدير المباشر", category: "permission_requests", scope: false },
+  { code: "approve_permission_requests_upper_managers", name: "اعتماد الاستئذان - مدراء الأقسام الأعلى", category: "permission_requests", scope: false },
+  { code: "approve_permission_requests_gm", name: "اعتماد الاستئذان - المدير العام", category: "permission_requests", scope: false },
+  { code: "approve_permission_requests_hr", name: "اعتماد الاستئذان - الموارد البشرية", category: "permission_requests", scope: false },
+  { code: "approve_permission_requests_finance", name: "اعتماد الاستئذان - المحاسب العام", category: "permission_requests", scope: false },
+
   { code: "view_evaluations", name: "عرض التقييمات", category: "evaluations", scope: true },
   { code: "create_evaluation", name: "إجراء تقييم للموظف", category: "evaluations", scope: false },
   { code: "edit_evaluation", name: "تعديل تقييم", category: "evaluations", scope: true },
@@ -119,21 +129,21 @@ const ALL_PERMISSIONS = [
   { code: "approve_evaluation_gm", name: "اعتماد التقييم - المدير العام", category: "evaluations", scope: false },
   { code: "approve_evaluation_hr", name: "اعتماد التقييم - الموارد البشرية", category: "evaluations", scope: false },
   { code: "approve_evaluation_finance", name: "اعتماد التقييم - المحاسب العام", category: "evaluations", scope: false },
-  
+
   { code: "view_evaluation_templates", name: "عرض قوالب التقييم", category: "evaluation_templates", scope: false },
   { code: "add_evaluation_template", name: "إضافة قالب تقييم", category: "evaluation_templates", scope: false },
   { code: "edit_evaluation_template", name: "تعديل قالب تقييم", category: "evaluation_templates", scope: false },
   { code: "delete_evaluation_template", name: "حذف قالب تقييم", category: "evaluation_templates", scope: false },
-  
+
   { code: "view_reports", name: "عرض التقارير", category: "reports", scope: false },
   { code: "generate_reports", name: "إنشاء تقارير", category: "reports", scope: false },
-  
+
   { code: "view_settings", name: "عرض الإعدادات", category: "settings", scope: false },
   { code: "edit_settings", name: "تعديل الإعدادات", category: "settings", scope: false },
-  
+
   { code: "manage_roles", name: "إدارة الأدوار والصلاحيات", category: "system", scope: false },
   { code: "manage_users", name: "إدارة المستخدمين", category: "system", scope: false },
-  
+
   { code: "view_job_descriptions", name: "عرض الأوصاف الوظيفية", category: "job_descriptions", scope: true },
   { code: "add_job_description", name: "إضافة وصف وظيفي", category: "job_descriptions", scope: false },
   { code: "edit_job_description", name: "تعديل وصف وظيفي", category: "job_descriptions", scope: true },
@@ -155,6 +165,7 @@ const CATEGORIES = {
   payroll: "الرواتب",
   bonuses: "المكافآت",
   overtime: "الساعات الإضافية",
+  permission_requests: "الاستئذان",
   evaluations: "تقييمات الأداء",
   evaluation_templates: "قوالب التقييم",
   reports: "التقارير",
@@ -287,23 +298,23 @@ export default function RolesPermissions() {
   const exportToCSV = () => {
     // بناء العناوين: اسم الدور، الرمز، ثم كل الصلاحيات
     const headers = ["اسم الدور", "الرمز", ...ALL_PERMISSIONS.map(p => p.name)];
-    
+
     // بناء الصفوف: لكل دور، نضع نعم أو لا لكل صلاحية
     const rows = roles.map((role) => {
       const row = [
         role.name || "",
         role.code || "",
       ];
-      
+
       // إضافة نعم/لا لكل صلاحية
       ALL_PERMISSIONS.forEach(perm => {
         const hasPermission = (role.permissions || []).includes(perm.code);
         row.push(hasPermission ? "نعم" : "لا");
       });
-      
+
       return row;
     });
-    
+
     const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
     const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -438,7 +449,7 @@ export default function RolesPermissions() {
                         {categoryPerms.map((perm) => {
                           const isChecked = (formData.permissions || []).includes(perm.code);
                           const currentScope = formData.data_scopes?.[perm.code] || "own";
-                          
+
                           return (
                             <div key={perm.code} className="flex items-center justify-between p-2 rounded hover:bg-gray-50">
                               <label className="flex items-center gap-2 cursor-pointer flex-1">

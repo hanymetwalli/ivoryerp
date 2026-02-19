@@ -23,3 +23,7 @@
 
 ### Task 2.1: Build Permissions Form Component
 * [ ] **Agent Prompt:** إنشاء صفحة/مكون لنموذج الاستئذان باستخدام React و Tailwind، وربطه بالخادم. معالجة حالات الخطأ (خاصة 422 Limit Exceeded) وعرضها للمستخدم بطريقة احترافية.
+
+### Task 2.2: Routing & Sidebar Navigation
+* [ ] **Objective:** جعل مكون `PermissionsForm.jsx` متاحاً عبر مسار (Route) مخصص، وإضافة رابط له في القائمة الجانبية (Sidebar) ليتمكن الموظف من الوصول إليه.
+* [ ] **Agent Prompt:** توجيه الوكيل لتعديل ملفات الـ Routing (غالباً `App.jsx` أو `main.jsx`) وملف القائمة الجانبية (مثل `Layout.jsx` أو `Sidebar.jsx`) لإضافة مسار `/permissions`.

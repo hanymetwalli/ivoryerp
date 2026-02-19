@@ -74,6 +74,7 @@ import Trainings from './pages/Trainings';
 import UserManagement from './pages/UserManagement';
 import WorkLocations from './pages/WorkLocations';
 import Login from './pages/Login';
+import Permissions from './pages/Permissions';
 import __Layout from './Layout.jsx';
 
 
@@ -105,6 +106,7 @@ export const PAGES = {
     "UserManagement": UserManagement,
     "WorkLocations": WorkLocations,
     "Login": Login,
+    "Permissions": Permissions,
 }
 
 export const pagesConfig = {

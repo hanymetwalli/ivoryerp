@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost/ivory_hr/v3/31/backend/api',
+        target: 'http://localhost/ivory_hr/v4/32/backend/api',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

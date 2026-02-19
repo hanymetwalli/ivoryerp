@@ -118,6 +118,7 @@ $entities = [
     'business-tasks' => 'BusinessTasksController',
     'development-logs' => 'DevelopmentLogsController',
     'insurance-settings' => 'InsuranceSettingsController',
+    'permission-requests' => 'PermissionsController',
 ];
 
 if (!$entity) {

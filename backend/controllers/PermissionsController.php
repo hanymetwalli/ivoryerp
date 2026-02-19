@@ -21,9 +21,9 @@ class PermissionsController extends BaseController {
     ];
 
     /**
-     * إنشاء طلب استئذان جديد
+     * إنشاء طلب استئذان جديد (Overrides BaseController::store)
      */
-    public function createRequest($requestData) {
+    public function store($requestData) {
         try {
             $userId = $requestData['user_id'] ?? null;
             $startTime = $requestData['start_time'] ?? null;
@@ -126,7 +126,8 @@ class PermissionsController extends BaseController {
 
             // 7. الحفظ باستخدام دالة store من BaseController
             // هذه الدالة ستتولى توليد UUID إذا لم يرسل، وتسجيل Audit Log
-            $storedRequest = $this->store($dataToStore);
+            // IMPORTANT: Use parent::store to avoid recursion since we renamed this method to store()
+            $storedRequest = parent::store($dataToStore);
 
             if (isset($storedRequest['error']) && $storedRequest['error']) {
                 return $storedRequest;

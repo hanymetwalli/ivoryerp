@@ -31,7 +31,7 @@ try {
 
     // Test Case 1: Valid Request
     echo "\n[Test 1] Valid Request (1 hour)...\n";
-    $result = $controller->createRequest([
+    $result = $controller->store([
         'user_id' => $testUserId,
         'start_time' => '09:00',
         'end_time' => '10:00',
@@ -48,7 +48,7 @@ try {
     // Test Case 2: Exceeding Limit
     // We try to request a very long duration to guarantee failure
     echo "\n[Test 2] Request exceeding limit (50 hours)...\n";
-    $result = $controller->createRequest([
+    $result = $controller->store([
         'user_id' => $testUserId, 
         'start_time' => '12:00',
         'end_time' => '14:00', // This is 2 hours.
@@ -69,7 +69,7 @@ try {
     // Code: $interval = $start->diff($end). 
     // If we pass '00:00' and '23:59', that's 24 hours (1440 mins).
     
-    $result = $controller->createRequest([
+    $result = $controller->store([
         'user_id' => $testUserId,
         'start_time' => '00:00',
         'end_time' => '23:00', // 23 hours = 1380 mins > 120
@@ -84,7 +84,7 @@ try {
 
      // Test Case 3: Invalid Time
     echo "\n[Test 3] Invalid Time (End before Start)...\n";
-    $result = $controller->createRequest([
+    $result = $controller->store([
         'user_id' => $testUserId,
         'start_time' => '10:00',
         'end_time' => '09:00',

@@ -66,9 +66,11 @@ export default function Settings() {
   const [insuranceSettings, setInsuranceSettings] = useState([]);
   const [workSchedules, setWorkSchedules] = useState([]);
   const [trainings, setTrainings] = useState([]);
+
+  const [systemSettings, setSystemSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("departments");
-  
+
   const [showForm, setShowForm] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -107,7 +109,9 @@ export default function Settings() {
         attStatusData,
         trainStatusData,
         empData,
+
         locData,
+        sysData,
       ] = await Promise.all([
         base44.entities.Department.list("-created_date"),
         base44.entities.Position.list("-created_date"),
@@ -123,7 +127,9 @@ export default function Settings() {
         base44.entities.AttendanceStatus.list("-created_date"),
         base44.entities.TrainingStatus.list("-created_date"),
         base44.entities.Employee.list(),
+
         base44.entities.WorkLocation.list(),
+        base44.entities.SystemSettings.list(),
       ]);
       setDepartments(deptData);
       setPositions(posData);
@@ -140,6 +146,7 @@ export default function Settings() {
       setTrainingStatuses(trainStatusData);
       setEmployees(empData);
       setWorkLocations(locData);
+      setSystemSettings(sysData);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -212,6 +219,23 @@ export default function Settings() {
     } catch (error) {
       console.error("Error saving:", error);
       toast.error("حدث خطأ");
+    }
+    setSaving(false);
+  };
+
+  const handleSaveSystemSetting = async (key, value, type = 'string') => {
+    setSaving(true);
+    try {
+      await base44.entities.SystemSettings.create({
+        setting_key: key,
+        setting_value: value,
+        setting_type: type
+      });
+      toast.success("تم تحديث الإعداد بنجاح");
+      loadData(); // Reload to refresh
+    } catch (error) {
+      console.error("Error saving setting:", error);
+      toast.error("فشل تحديث الإعداد");
     }
     setSaving(false);
   };
@@ -827,6 +851,10 @@ export default function Settings() {
             <Building2 className="w-4 h-4" />
             الأقسام
           </TabsTrigger>
+          <TabsTrigger value="general" className="flex items-center gap-1">
+            <SettingsIcon className="w-4 h-4" />
+            إعدادات عامة
+          </TabsTrigger>
           <TabsTrigger value="positions" className="flex items-center gap-1">
             <Briefcase className="w-4 h-4" />
             المناصب
@@ -884,6 +912,38 @@ export default function Settings() {
             إدارة المستخدمين
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="general" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>إعدادات الاستئذان</CardTitle>
+              <CardDescription>تحكم في سياسات وآليات طلبات الاستئذان للموظفين</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end gap-4">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="monthly_limit">الحد الأقصى للاستئذان الشهري (بالدقائق)</Label>
+                  <Input
+                    id="monthly_limit"
+                    type="number"
+                    placeholder="مثال: 120"
+                    defaultValue={systemSettings.monthly_permission_limit_minutes || 120}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, monthly_permission_limit_minutes: e.target.value })}
+                  />
+                  <p className="text-sm text-gray-500">
+                    رصيد الدقائق المتاح للموظف خلال الشهر الواحد. القيمة الافتراضية 120 دقيقة.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => handleSaveSystemSetting('monthly_permission_limit_minutes', systemSettings.monthly_permission_limit_minutes, 'number')}
+                  disabled={saving}
+                >
+                  {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="departments" className="mt-4">
           <div className="bg-white rounded-xl shadow-sm border p-8 text-center space-y-4">
