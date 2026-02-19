@@ -1,0 +1,59 @@
+User Schema Editor
+Close
+role
+(
+text
+, required
+)
+The role of the user in the app
+
+Options: admin, user
+email
+(
+text
+, required
+)
+The email of the user
+
+full_name
+(
+text
+, required
+)
+The full name of the user
+
+hr_role
+(
+text
+)
+دور المستخدم في نظام الموارد البشرية
+
+Default: "employee"
+Options: hr_admin, manager, employee
+department_id
+(
+text
+, required
+)
+القسم التابع له (للمدراء والموظفين)
+
+managed_departments
+(
+array
+, required
+)
+الأقسام التي يديرها (للمدراء)
+
+phone
+(
+text
+, required
+)
+رقم الهاتف
+
+employee_id
+(
+text
+, required
+)
+معرف الموظف المرتبط

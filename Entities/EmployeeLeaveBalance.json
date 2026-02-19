@@ -1,0 +1,37 @@
+{
+  "name": "EmployeeLeaveBalance",
+  "type": "object",
+  "properties": {
+    "employee_id": {
+      "type": "string",
+      "description": "\u0645\u0639\u0631\u0641 \u0627\u0644\u0645\u0648\u0638\u0641"
+    },
+    "leave_type_id": {
+      "type": "string",
+      "description": "\u0646\u0648\u0639 \u0627\u0644\u0625\u062c\u0627\u0632\u0629"
+    },
+    "year": {
+      "type": "number",
+      "description": "\u0627\u0644\u0633\u0646\u0629"
+    },
+    "total_balance": {
+      "type": "number",
+      "description": "\u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a"
+    },
+    "used_balance": {
+      "type": "number",
+      "default": 0,
+      "description": "\u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645"
+    },
+    "remaining_balance": {
+      "type": "number",
+      "description": "\u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u062a\u0628\u0642\u064a"
+    }
+  },
+  "required": [
+    "employee_id",
+    "leave_type_id",
+    "year",
+    "total_balance"
+  ]
+}

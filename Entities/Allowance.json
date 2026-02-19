@@ -1,0 +1,65 @@
+{
+  "name": "Allowance",
+  "type": "object",
+  "properties": {
+    "employee_id": {
+      "type": "string",
+      "description": "\u0645\u0639\u0631\u0641 \u0627\u0644\u0645\u0648\u0638\u0641"
+    },
+    "type": {
+      "type": "string",
+      "description": "\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0648\u0629"
+    },
+    "amount": {
+      "type": "number",
+      "description": "\u0627\u0644\u0645\u0628\u0644\u063a"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "SAR",
+        "EGP",
+        "USD"
+      ],
+      "default": "SAR"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0628\u062f\u0627\u064a\u0629"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0646\u0647\u0627\u064a\u0629"
+    },
+    "is_recurring": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u0645\u062a\u0643\u0631\u0631\u0629 \u0634\u0647\u0631\u064a\u0627\u064b"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "expired"
+      ],
+      "default": "active"
+    },
+    "reason": {
+      "type": "string",
+      "description": "\u0627\u0644\u0633\u0628\u0628"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "\u0627\u0644\u0645\u0639\u062a\u0645\u062f"
+    }
+  },
+  "required": [
+    "employee_id",
+    "type",
+    "amount",
+    "start_date"
+  ]
+}
