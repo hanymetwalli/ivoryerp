@@ -1,0 +1,17 @@
+﻿Testing PermissionsController with Valid User...
+Current System Limit: 240
+Using User ID: u-emp-03 (abdalmumn@ivory.com)
+
+[Test 1] Valid Request (1 hour)...
+FAILED: Array
+(
+    [error] => 1
+    [message] => SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ivory_hr_2026`.`permission_requests`, CONSTRAINT `permission_requests_ibfk_2` FOREIGN KEY (`current_stage_role_id`) REFERENCES `roles` (`id`) ON DELETE SET NULL)
+)
+
+
+[Test 2] Request exceeding limit (50 hours)...
+SUCCESS (Expected Error): ╪╣╪░╪▒╪º┘ï╪î ┘ç╪░╪º ╪º┘ä╪╖┘ä╪¿ ┘è╪¬╪¼╪º┘ê╪▓ ╪▒╪╡┘è╪» ╪º┘ä╪º╪│╪¬╪ª╪░╪º┘å ╪º┘ä╪┤┘ç╪▒┘è ╪º┘ä┘à╪│┘à┘ê╪¡ ╪¿┘ç.
+
+[Test 3] Invalid Time (End before Start)...
+SUCCESS (Expected Error): ┘ê┘é╪¬ ╪º┘ä┘å┘ç╪º┘è╪⌐ ┘è╪¼╪¿ ╪ú┘å ┘è┘â┘ê┘å ╪¿╪╣╪» ┘ê┘é╪¬ ╪º┘ä╪¿╪»╪º┘è╪⌐

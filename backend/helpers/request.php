@@ -36,7 +36,7 @@ function sanitizeInput($data) {
 }
 
 function getCurrentUserId() {
-    $headers = getallheaders();
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
     $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     
     if (strpos($auth, 'Bearer ') === 0) {

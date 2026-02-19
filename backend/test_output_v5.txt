@@ -1,0 +1,14 @@
+﻿Testing PermissionsController with Valid User...
+Current System Limit: 240
+Using User ID: u-emp-03 (abdalmumn@ivory.com)
+
+[Test 1] Valid Request (1 hour)...
+
+Fatal error: Uncaught Error: Call to undefined function getallheaders() in C:\laragon\www\ivory_hr\v4\32\backend\helpers\request.php:39
+Stack trace:
+#0 C:\laragon\www\ivory_hr\v4\32\backend\helpers\audit.php(21): getCurrentUserId()
+#1 C:\laragon\www\ivory_hr\v4\32\backend\controllers\BaseController.php(96): recordAuditLog('create', 'permission_requ...', '194112aa-cd3b-4...', NULL, Array)
+#2 C:\laragon\www\ivory_hr\v4\32\backend\controllers\PermissionsController.php(129): BaseController->store(Array)
+#3 C:\laragon\www\ivory_hr\v4\32\backend\test_permissions.php(34): PermissionsController->createRequest(Array)
+#4 {main}
+  thrown in C:\laragon\www\ivory_hr\v4\32\backend\helpers\request.php on line 39

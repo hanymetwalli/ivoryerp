@@ -1,0 +1,25 @@
+﻿Testing PermissionsController...
+
+[Test 1] Valid Request (1 hour)...
+Array
+(
+    [error] => 1
+    [message] => SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ivory_hr_2026`.`permission_requests`, CONSTRAINT `permission_requests_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE)
+)
+FAILED: SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ivory_hr_2026`.`permission_requests`, CONSTRAINT `permission_requests_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE)
+
+[Test 2] Request exceeding limit (3 hours)...
+Array
+(
+    [error] => 1
+    [message] => SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ivory_hr_2026`.`permission_requests`, CONSTRAINT `permission_requests_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE)
+)
+SUCCESS (Expected Error)
+
+[Test 3] Invalid Time (End before Start)...
+Array
+(
+    [error] => 1
+    [message] => ┘ê┘é╪¬ ╪º┘ä┘å┘ç╪º┘è╪⌐ ┘è╪¼╪¿ ╪ú┘å ┘è┘â┘ê┘å ╪¿╪╣╪» ┘ê┘é╪¬ ╪º┘ä╪¿╪»╪º┘è╪⌐
+)
+SUCCESS (Expected Error)

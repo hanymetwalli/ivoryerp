@@ -1,0 +1,65 @@
+﻿--- ROLES TABLE DUMP ---
+Array
+(
+    [0] => Array
+        (
+            [id] => 978f139b-e1bf-43b9-a924-2eb12537c2aa
+            [name] => admin
+        )
+
+    [1] => Array
+        (
+            [id] => 6c162cce-02a0-11f1-a178-d481d76a1bbe
+            [name] => department_manager
+        )
+
+    [2] => Array
+        (
+            [id] => 6c162dae-02a0-11f1-a178-d481d76a1bbe
+            [name] => employee
+        )
+
+    [3] => Array
+        (
+            [id] => 6c162c07-02a0-11f1-a178-d481d76a1bbe
+            [name] => finance_manager
+        )
+
+    [4] => Array
+        (
+            [id] => 0bf0c2a2-98ad-41e8-a114-7faf05d4ba1e
+            [name] => full_access
+        )
+
+    [5] => Array
+        (
+            [id] => 6c1629cb-02a0-11f1-a178-d481d76a1bbe
+            [name] => hr_manager
+        )
+
+    [6] => Array
+        (
+            [id] => 6c162b0b-02a0-11f1-a178-d481d76a1bbe
+            [name] => hr_staff
+        )
+
+    [7] => Array
+        (
+            [id] => b5ce42b8-569d-4abe-85d0-c43758accb83
+            [name] => main_department_manager
+        )
+
+    [8] => Array
+        (
+            [id] => ff72942b-09d7-4e42-aab5-03b98039c08a
+            [name] => manager
+        )
+
+    [9] => Array
+        (
+            [id] => 6c1626e4-02a0-11f1-a178-d481d76a1bbe
+            [name] => super_admin
+        )
+
+)
+------------------------
