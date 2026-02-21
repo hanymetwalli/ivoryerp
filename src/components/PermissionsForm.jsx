@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
 import { base44 } from '@/api/ivoryClient';
 import { Button } from '@/components/ui/button';
@@ -8,33 +8,82 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
-export default function PermissionsForm() {
+export default function PermissionsForm({ initialData, employees = [], onSuccess, onCancel }) {
     const { currentUser } = useAuth();
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [errorData, setErrorData] = useState(null);
-    const [formData, setFormData] = useState({
+
+    // Default form state
+    const defaultFormState = {
         request_date: new Date().toISOString().split('T')[0],
         start_time: '',
         end_time: '',
-        reason: ''
-    });
+        reason: '',
+        employee_id: currentUser?.employee_id || ''
+    };
+
+    const [formData, setFormData] = useState(defaultFormState);
+
+    // Check if user has permission to add for others
+    const canAddForOthers = currentUser?.role === 'admin' || currentUser?.hr_role === 'manager';
+
+    useEffect(() => {
+        if (initialData) {
+            // Populate form for Edit Mode
+            setFormData({
+                request_date: initialData.request_date || (initialData.start_time ? initialData.start_time.split(' ')[0] : new Date().toISOString().split('T')[0]),
+                start_time: initialData.start_time ? (initialData.start_time.includes(' ') ? initialData.start_time.split(' ')[1].substring(0, 5) : initialData.start_time.substring(0, 5)) : '',
+                end_time: initialData.end_time ? (initialData.end_time.includes(' ') ? initialData.end_time.split(' ')[1].substring(0, 5) : initialData.end_time.substring(0, 5)) : '',
+                reason: initialData.reason || '',
+                employee_id: initialData.employee_id ? String(initialData.employee_id) : (currentUser?.employee_id ? String(currentUser.employee_id) : '')
+            });
+        } else {
+            // Reset form for New Request Mode
+            setFormData({
+                ...defaultFormState,
+                employee_id: currentUser?.employee_id || ''
+            });
+        }
+
+        // Clear errors when opening modal
+        setErrorData(null);
+    }, [initialData, currentUser]); // Removed loadEmployees logic
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-        // Clear specific error when user types
+        // Clear errors on change
         if (errorData) setErrorData(null);
     };
 
+    const handleSelectChange = (name, value) => {
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
     const validate = () => {
-        if (!formData.start_time || !formData.end_time || !formData.reason) {
+        if (!formData.start_time || !formData.end_time || !formData.reason || !formData.request_date) {
             toast({
                 variant: "destructive",
                 title: "خطأ",
                 description: "يرجى تعبئة جميع الحقول المطلوبة.",
+            });
+            return false;
+        }
+
+        if (canAddForOthers && !formData.employee_id) {
+            toast({
+                variant: "destructive",
+                title: "خطأ",
+                description: "يرجى اختيار الموظف.",
             });
             return false;
         }
@@ -78,26 +127,25 @@ export default function PermissionsForm() {
             const fullEndTime = `${formData.request_date} ${formData.end_time}`;
 
             const payload = {
-                user_id: currentUser?.id,
+                user_id: currentUser?.id, // Always send the current user's ID as the creator
+                employee_id: formData.employee_id, // Send employee_id explicitly
                 start_time: fullStartTime,
                 end_time: fullEndTime,
                 reason: formData.reason
             };
 
-            await base44.entities.PermissionRequest.create(payload);
+            // If backend strictly needs user_id, we might need to find user_id from employee_id for 'others'.
+            // For now, let's assume `employee_id` in payload is enough or handled by backend.
+            // If we are editing:
+            if (initialData && initialData.id) {
+                await base44.entities.PermissionRequest.update(initialData.id, payload);
+                toast({ title: "تم التعديل بنجاح", description: "تم تعديل طلب الاستئذان." });
+            } else {
+                await base44.entities.PermissionRequest.create(payload);
+                toast({ title: "تم بنجاح", description: "تم إرسال طلب الاستئذان للمراجعة." });
+            }
 
-            toast({
-                title: "تم بنجاح",
-                description: "تم إرسال طلب الاستئذان للمراجعة.",
-            });
-
-            // Reset Form
-            setFormData({
-                request_date: new Date().toISOString().split('T')[0],
-                start_time: '',
-                end_time: '',
-                reason: ''
-            });
+            if (onSuccess) onSuccess();
 
         } catch (error) {
             console.error("Submission Error:", error);
@@ -153,81 +201,112 @@ export default function PermissionsForm() {
     };
 
     return (
-        <Card className="w-full max-w-lg mx-auto mt-10">
-            <CardHeader>
-                <CardTitle className="text-xl">تقديم طلب استئذان</CardTitle>
-            </CardHeader>
-            <CardContent>
-                {errorData && (
-                    <Alert variant="destructive" className="mb-6">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>تجاوز الحد المسموح</AlertTitle>
-                        <AlertDescription className="mt-2 flex flex-col gap-1 text-sm">
-                            <span>عذراً، طلبك يتجاوز الرصيد الشهري.</span>
-                            <span className="font-bold">الرصيد المسموح: {errorData.limit_minutes} دقيقة</span>
-                            <span>المستهلك: {errorData.consumed_minutes} دقيقة</span>
-                            <span>المتبقي: {errorData.remaining_minutes} دقيقة</span>
-                            <span>الطلب الحالي: {errorData.requested_minutes} دقيقة</span>
-                        </AlertDescription>
-                    </Alert>
+        <div className="space-y-4" dir="rtl">
+            {errorData && (
+                <Alert variant="destructive" className="mb-6">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>تجاوز الحد المسموح</AlertTitle>
+                    <AlertDescription className="mt-2 flex flex-col gap-1 text-sm">
+                        <span>عذراً، الطلب يتجاوز الرصيد الشهري.</span>
+                        {errorData.limit_minutes && <span className="font-bold">الرصيد المسموح: {errorData.limit_minutes} دقيقة</span>}
+                        {errorData.consumed_minutes && <span>المستهلك: {errorData.consumed_minutes} دقيقة</span>}
+                        {errorData.remaining_minutes && <span>المتبقي: {errorData.remaining_minutes} دقيقة</span>}
+                        {errorData.requested_minutes && <span>الطلب الحالي: {errorData.requested_minutes} دقيقة</span>}
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {/* Request Number Display */}
+            {initialData && initialData.request_number && (
+                <div className="bg-blue-50 text-blue-700 p-3 rounded-md mb-4 flex items-center gap-2 border border-blue-100">
+                    <span className="font-semibold">رقم الطلب:</span>
+                    <span className="font-mono text-lg">{initialData.request_number}</span>
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {canAddForOthers && (
+                    <div className="space-y-2">
+                        <Label>الموظف *</Label>
+                        <Select
+                            value={String(formData.employee_id)}
+                            onValueChange={(v) => handleSelectChange('employee_id', v)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="اختر الموظف" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {employees.map((emp) => (
+                                    <SelectItem key={emp.id} value={String(emp.id)}>
+                                        {emp.full_name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="request_date">تاريخ الطلب</Label>
+                    <Input
+                        type="date"
+                        id="request_date"
+                        name="request_date"
+                        value={formData.request_date}
+                        onChange={handleChange}
+                        required
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="request_date">تاريخ الطلب</Label>
+                        <Label htmlFor="start_time">وقت البداية</Label>
                         <Input
-                            type="date"
-                            id="request_date"
-                            name="request_date"
-                            value={formData.request_date}
+                            type="time"
+                            id="start_time"
+                            name="start_time"
+                            value={formData.start_time}
                             onChange={handleChange}
                             required
                         />
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="start_time">وقت البداية</Label>
-                            <Input
-                                type="time"
-                                id="start_time"
-                                name="start_time"
-                                value={formData.start_time}
-                                onChange={handleChange}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="end_time">وقت النهاية</Label>
-                            <Input
-                                type="time"
-                                id="end_time"
-                                name="end_time"
-                                value={formData.end_time}
-                                onChange={handleChange}
-                                required
-                            />
-                        </div>
-                    </div>
-
                     <div className="space-y-2">
-                        <Label htmlFor="reason">سبب الاستئذان</Label>
-                        <Textarea
-                            id="reason"
-                            name="reason"
-                            placeholder="يرجى ذكر سبب الاستئذان..."
-                            value={formData.reason}
+                        <Label htmlFor="end_time">وقت النهاية</Label>
+                        <Input
+                            type="time"
+                            id="end_time"
+                            name="end_time"
+                            value={formData.end_time}
                             onChange={handleChange}
                             required
                         />
                     </div>
+                </div>
 
-                    <Button type="submit" className="w-full" disabled={loading}>
+                <div className="space-y-2">
+                    <Label htmlFor="reason">سبب الاستئذان</Label>
+                    <Textarea
+                        id="reason"
+                        name="reason"
+                        placeholder="يرجى ذكر سبب الاستئذان..."
+                        value={formData.reason}
+                        onChange={handleChange}
+                        required
+                    />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                    {onCancel && (
+                        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
+                            إلغاء
+                        </Button>
+                    )}
+                    <Button type="submit" disabled={loading}>
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        إرسال الطلب
+                        {initialData ? 'حفظ التعديلات' : 'إرسال الطلب'}
                     </Button>
-                </form>
-            </CardContent>
-        </Card>
+                </div>
+            </form>
+        </div>
     );
 }

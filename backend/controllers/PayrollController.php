@@ -142,7 +142,7 @@ class PayrollController extends BaseController {
         $attendanceRecords = $stmt->fetchAll();
 
         $absentDays = 0;
-        $lateMinutes = 0;
+        $lateMinutesRaw = 0;
         foreach ($attendanceRecords as $record) {
             if ($record['status'] === 'absent') {
                 // إلغاء الغياب إذا كان في يوم إجازة مدفوعة
@@ -150,8 +150,24 @@ class PayrollController extends BaseController {
                     $absentDays++;
                 }
             }
-            $lateMinutes += (int)($record['late_minutes'] ?? 0);
+            $lateMinutesRaw += (int)($record['late_minutes'] ?? 0);
         }
+
+        // 4.5 جلب دقائق الاستئذان المعتمدة وخصمها من التأخير
+        $stmt = $this->db->prepare("
+            SELECT SUM(duration_minutes) as permitted_mins 
+            FROM permission_requests 
+            WHERE employee_id = :eid AND status = 'approved'
+            AND DATE_FORMAT(request_date, '%Y-%m') = :month_str
+        ");
+        $stmt->execute([
+            ':eid' => $employeeId,
+            ':month_str' => sprintf('%04d-%02d', $year, $month)
+        ]);
+        $permittedMins = (int)($stmt->fetch()['permitted_mins'] ?? 0);
+        
+        // صافي دقائق التأخير = التأخير الإجمالي - دقائق الاستئذان
+        $lateMinutes = max(0, $lateMinutesRaw - $permittedMins);
 
         // 5. جلب الساعات الإضافية المعتمدة
         $stmt = $this->db->prepare("
