@@ -19,6 +19,8 @@ import {
   Award,
   Landmark,
   Users,
+  GitBranch,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +70,11 @@ export default function Settings() {
   const [trainings, setTrainings] = useState([]);
 
   const [systemSettings, setSystemSettings] = useState({});
+  const [roles, setRoles] = useState([]);
+  const [workflowBlueprints, setWorkflowBlueprints] = useState([]);
+  const [selectedWorkflowType, setSelectedWorkflowType] = useState("");
+  const [currentWorkflowSteps, setCurrentWorkflowSteps] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("departments");
 
@@ -147,6 +154,14 @@ export default function Settings() {
       setEmployees(empData);
       setWorkLocations(locData);
       setSystemSettings(sysData);
+
+      // Fetch roles and workflows
+      const [rolesData, workflowsData] = await Promise.all([
+        base44.entities.Role.list(),
+        base44.entities.WorkflowSettings.list()
+      ]);
+      setRoles(rolesData);
+      setWorkflowBlueprints(workflowsData);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -911,6 +926,10 @@ export default function Settings() {
             <Users className="w-4 h-4" />
             إدارة المستخدمين
           </TabsTrigger>
+          <TabsTrigger value="workflows" className="flex items-center gap-1">
+            <GitBranch className="w-4 h-4" />
+            مسارات الاعتماد
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="mt-4 space-y-4">
@@ -1115,6 +1134,178 @@ export default function Settings() {
           </div>
         </TabsContent>
 
+        <TabsContent value="workflows" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>بناء مسارات الاعتماد</CardTitle>
+                <CardDescription>قم بضبط خطوات الموافقة المتسلسلة لكل نوع من أنواع الطلبات</CardDescription>
+              </div>
+              <div className="w-64">
+                <Select
+                  value={selectedWorkflowType}
+                  onValueChange={(val) => {
+                    setSelectedWorkflowType(val);
+                    const bp = workflowBlueprints.find(b => b.request_type === val);
+                    if (bp) {
+                      setCurrentWorkflowSteps(bp.steps.map(s => ({
+                        id: s.id,
+                        approver_type: s.is_direct_manager ? 'manager' : 'role',
+                        role_id: s.role_id,
+                        show_approver_name: !!s.show_approver_name
+                      })));
+                    } else {
+                      setCurrentWorkflowSteps([]);
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر نوع الطلب" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LeaveRequest">طلب إجازة (LeaveRequest)</SelectItem>
+                    <SelectItem value="PermissionRequest">طلب استئذان (PermissionRequest)</SelectItem>
+                    <SelectItem value="OvertimeRequest">طلب عمل إضافي (Overtime)</SelectItem>
+                    <SelectItem value="BonusRequest">طلب مكافأة (Bonus)</SelectItem>
+                    <SelectItem value="ResignationRequest">طلب استقالة (Resignation)</SelectItem>
+                    <SelectItem value="Payroll">مسير رواتب (Payroll)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {!selectedWorkflowType ? (
+                <div className="py-12 text-center text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
+                  <GitBranch className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                  <p>يرجى اختيار نوع طلب لعرض أو تعديل مسار الاعتماد الخاص به</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    {currentWorkflowSteps.length === 0 && (
+                      <p className="text-center py-4 text-gray-500 italic">لا يوجد مسار معرّف حالياً. سيتم الاعتماد مباشرة.</p>
+                    )}
+                    {currentWorkflowSteps.map((step, index) => (
+                      <div key={index} className="flex items-start gap-4 p-4 border rounded-lg bg-white shadow-sm relative group">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#7c3238] text-white flex items-center justify-center font-bold">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-1">
+                            <Label>نوع المعتمد</Label>
+                            <Select
+                              value={step.approver_type}
+                              onValueChange={(val) => {
+                                const newSteps = [...currentWorkflowSteps];
+                                newSteps[index].approver_type = val;
+                                if (val === 'manager') newSteps[index].role_id = null;
+                                setCurrentWorkflowSteps(newSteps);
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="manager">المدير المباشر</SelectItem>
+                                <SelectItem value="role">دور وظيفي محدد</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {step.approver_type === 'role' && (
+                            <div className="space-y-1">
+                              <Label>تحديد الدور</Label>
+                              <Select
+                                value={step.role_id || ""}
+                                onValueChange={(val) => {
+                                  const newSteps = [...currentWorkflowSteps];
+                                  newSteps[index].role_id = val;
+                                  setCurrentWorkflowSteps(newSteps);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="اختر الدور" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {roles.map(role => (
+                                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2 pt-8">
+                            <Switch
+                              checked={step.show_approver_name}
+                              onCheckedChange={(val) => {
+                                const newSteps = [...currentWorkflowSteps];
+                                newSteps[index].show_approver_name = val;
+                                setCurrentWorkflowSteps(newSteps);
+                              }}
+                            />
+                            <Label>إظهار اسم المعتمد</Label>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            setCurrentWorkflowSteps(currentWorkflowSteps.filter((_, i) => i !== index));
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setCurrentWorkflowSteps([...currentWorkflowSteps, {
+                          approver_type: 'manager',
+                          role_id: null,
+                          show_approver_name: true
+                        }]);
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      إضافة خطوة جديدة
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        setSaving(true);
+                        try {
+                          await base44.entities.WorkflowSettings.customAction('0', 'save', {
+                            request_type: selectedWorkflowType,
+                            steps: currentWorkflowSteps
+                          });
+                          toast.success("تم حفظ مسار الاعتماد بنجاح");
+                          // Refresh data
+                          const workflowsData = await base44.entities.WorkflowSettings.list();
+                          setWorkflowBlueprints(workflowsData);
+                        } catch (error) {
+                          console.error("Save workflow error:", error);
+                          toast.error("فشل حفظ المسار");
+                        }
+                        setSaving(false);
+                      }}
+                      disabled={saving}
+                      className="bg-[#7c3238] hover:bg-[#5a252a] flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      {saving ? "جاري الحفظ..." : "حفظ المسار"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="users" className="mt-4">
           <div className="bg-white rounded-xl shadow-sm border p-8 text-center space-y-4">
             <Users className="w-16 h-16 mx-auto text-[#7c3238]" />

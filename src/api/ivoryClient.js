@@ -604,7 +604,8 @@ const ivoryClient = {
         BusinessTask: new Entity('business-tasks'),
         DevelopmentLog: new Entity('development-logs'),
         InsuranceSettings: new Entity('insurance-settings'),
-        PermissionRequest: new Entity('permission-requests'), // Added for Permissions Logic
+        PermissionRequest: new Entity('permission-requests'),
+        WorkflowSettings: new Entity('workflow-settings'),
     },
 
     functions: new Functions(),
