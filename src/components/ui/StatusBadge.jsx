@@ -51,7 +51,7 @@ const statusLabels = {
   cancelled: "ملغي",
 };
 
-export default function StatusBadge({ status, customLabel, className }) {
+export default function StatusBadge({ status, customLabel = null, className = "" }) {
   return (
     <span
       className={cn(

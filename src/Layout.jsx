@@ -28,6 +28,7 @@ import {
   Shield,
   DollarSign,
   Code,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +62,7 @@ function LayoutContent({ children, currentPageName }) {
 
   const navItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: createPageUrl("Dashboard"), label: "لوحة التحكم", permission: PERMISSIONS.VIEW_DASHBOARD },
+    { name: "Approvals", icon: AlertCircle, path: createPageUrl("Approvals"), label: "صندوق الاعتمادات" },
     {
       label: "الموظفين",
       icon: Users,

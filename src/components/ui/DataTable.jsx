@@ -29,9 +29,9 @@ import { cn } from "@/lib/utils";
 export default function DataTable({
   data = [],
   columns = [],
-  onRowClick,
-  onAdd,
-  onExport,
+  onRowClick = null,
+  onAdd = () => { },
+  onExport = () => { },
   searchable = true,
   searchPlaceholder = "بحث...",
   addButtonText = "إضافة جديد",
@@ -39,7 +39,7 @@ export default function DataTable({
   showExport = false,
   loading = false,
   emptyMessage = "لا توجد بيانات",
-  className,
+  className = "",
 }) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);

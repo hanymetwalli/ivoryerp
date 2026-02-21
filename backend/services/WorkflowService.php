@@ -137,7 +137,7 @@ class WorkflowService {
             $this->db->commit();
             return ['status' => 'success'];
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->db->rollBack();
             throw $e;
         }
@@ -177,7 +177,7 @@ class WorkflowService {
         // البحث عن مدير القسم المرتبط بالموظف
         $sql = "SELECT u.id 
                 FROM employees e
-                JOIN departments d ON e.department = d.id
+                JOIN departments d ON (e.department = d.id OR e.department = d.name)
                 JOIN employees mgr ON d.manager_id = mgr.id
                 JOIN users u ON mgr.email = u.email
                 WHERE e.id = :eid LIMIT 1";

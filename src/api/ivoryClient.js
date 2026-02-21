@@ -54,11 +54,23 @@ class Entity {
     }
 
     // List all records
-    async list(sort = '-created_at', limit = 100) {
+    async list(sortOrFilters = '-created_at', limit = 100) {
         const params = new URLSearchParams();
 
+        let sortField = sortOrFilters;
+        let finalLimit = limit;
+
+        if (typeof sortOrFilters === 'object' && sortOrFilters !== null) {
+            Object.entries(sortOrFilters).forEach(([key, value]) => {
+                if (key !== 'sort' && key !== 'limit') {
+                    params.set(key, value);
+                }
+            });
+            sortField = sortOrFilters.sort || '-created_at';
+            finalLimit = sortOrFilters.limit || limit;
+        }
+
         // Map common field differences between base44 and local DB
-        let sortField = sort;
         if (sortField.startsWith('-')) {
             sortField = sortField.substring(1);
             params.set('order', 'DESC');
@@ -72,7 +84,7 @@ class Entity {
         }
 
         params.set('sort', sortField);
-        params.set('limit', limit);
+        params.set('limit', finalLimit);
 
         const result = await apiCall(`${this.endpoint}?${params.toString()}`);
         return result.data || result;
@@ -606,6 +618,7 @@ const ivoryClient = {
         InsuranceSettings: new Entity('insurance-settings'),
         PermissionRequest: new Entity('permission-requests'),
         WorkflowSettings: new Entity('workflow-settings'),
+        Approvals: new Entity('approvals'),
     },
 
     functions: new Functions(),

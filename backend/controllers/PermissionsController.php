@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/BaseController.php';
+require_once __DIR__ . '/../services/WorkflowService.php';
 require_once __DIR__ . '/../services/ApprovalService.php';
 
 class PermissionsController extends BaseController {
@@ -199,36 +200,11 @@ class PermissionsController extends BaseController {
                  $managerRoleId = $adminRole ? $adminRole['id'] : 1; 
             }
 
-            // 5. Request Number Generation
+            // 6. Request Number Generation
             $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM `permission_requests` WHERE YEAR(created_at) = YEAR(CURDATE())");
             $stmt->execute();
             $count = $stmt->fetch()['count'] + 1;
             $requestNumber = 'PR-' . date('Y') . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
-
-            // 6. Generate Approval Chain (Using WorkflowHelper)
-            require_once __DIR__ . '/../helpers/workflow.php';
-            $wf = new WorkflowHelper($this->db);
-            $chain = $wf->getApprovalChain($employeeId, false, 'PermissionRequest');
-            
-            $initialStatus = 'pending';
-            $currentLevelIdx = 0;
-            $currentStatusDesc = '';
-            
-            if (!empty($chain)) {
-                $firstStep = $chain[0];
-                $approverTitle = $firstStep['level_name'] ?? $firstStep['role_required'];
-                $approverName = $firstStep['approver_name'] ?? '';
-                $currentStatusDesc = "جارى الاعتماد من: {$approverTitle}" . ($approverName ? " ({$approverName})" : "");
-            } else {
-                $currentStatusDesc = "في انتظار المراجعة (الإدارة)";
-                $chain[] = [
-                    'level' => 'admin_fallback',
-                    'level_name' => 'الإدارة',
-                    'approver_id' => null,
-                    'approver_name' => 'مدير النظام',
-                    'approval_status' => 'pending'
-                ];
-            }
 
             // 7. Prepare Data for Save
             $dataToStore = [
@@ -240,10 +216,7 @@ class PermissionsController extends BaseController {
                 'end_time' => $end->format('H:i:s'),
                 'duration_minutes' => $newDuration,
                 'reason' => $requestData['reason'] ?? null,
-                'status' => $initialStatus,
-                'approval_chain' => json_encode($chain, JSON_UNESCAPED_UNICODE),
-                'current_level_idx' => $currentLevelIdx,
-                'current_status_desc' => $currentStatusDesc,
+                'status' => 'pending',
                 'current_stage_role_id' => $managerRoleId, 
             ];
 
@@ -253,13 +226,17 @@ class PermissionsController extends BaseController {
                 return $storedRequest;
             }
 
+            // 8. Generate Approval Flow (New Polymorphic System)
+            $workflowService = new WorkflowService();
+            $workflowService->generateFlow('permission_requests', $storedRequest['id'], 'PermissionRequest');
+
             return [
                 'success' => true,
                 'message' => 'تم تقديم طلب الاستئذان بنجاح',
                 'data' => $storedRequest
             ];
 
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             http_response_code(500);
             return ['error' => true, 'message' => 'حدث خطأ غير متوقع: ' . $e->getMessage()];
         }
