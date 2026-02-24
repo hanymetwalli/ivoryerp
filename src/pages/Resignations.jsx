@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
+import {
   FileText, Plus, Eye, Calendar, User, AlertCircle, Upload, Paperclip,
-  MoreVertical, Edit, Trash2 
+  MoreVertical, Edit, Trash2, CheckCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
@@ -23,6 +24,7 @@ import ApprovalTimeline from "@/components/ApprovalTimeline";
 import ApprovalActions from "@/components/ApprovalActions";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { PERMISSIONS } from "@/components/permissions";
+import { useAuth } from "@/components/AuthProvider";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -34,22 +36,32 @@ export default function Resignations() {
   const [editingItem, setEditingItem] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
+  const [forceApproveLoading, setForceApproveLoading] = useState(false);
+
+  const {
+    currentUser,
+    userEmployee,
+    hasPermission,
+    filterEmployees,
+    filterEmployeeRelatedData,
+    loading: authLoading,
+  } = useAuth();
+
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading) {
+      loadData();
+    }
+  }, [authLoading]);
 
   const loadData = async () => {
+    if (authLoading) return;
     try {
-      const [employeesData, userData] = await Promise.all([
-        base44.entities.Employee.list(),
-        base44.auth.me(),
-      ]);
+      const employeesData = await base44.entities.Employee.list();
       setEmployees(employeesData);
-      setCurrentUser(userData);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -61,35 +73,9 @@ export default function Resignations() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data) => {
-      try {
-        const requestNumber = await base44.functions.invoke("generateRequestNumber", {
-          entity: "Resignation",
-        });
-        
-        const approvalChain = await base44.functions.invoke("getApprovalChain", {
-          entity: "Resignation",
-          employeeId: data.employee_id,
-        });
-
-        return base44.entities.Resignation.create({
-          ...data,
-          request_number: requestNumber.data.request_number,
-          approval_chain: approvalChain.data.approvalChain, // Save the full chain
-          current_approval_level: approvalChain.data.approvalChain[0]?.level,
-          current_level_idx: 0,
-          current_status_desc: approvalChain.data.approvalChain[0] 
-            ? `جارى الاعتماد من: ${approvalChain.data.approvalChain[0].level_name}` 
-            : 'قيد الانتظار',
-          approval_history: [],
-        });
-      } catch (error) {
-        console.error("Error creating resignation:", error);
-        throw error;
-      }
-    },
+    mutationFn: (data) => base44.entities.Resignation.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["resignations"]);
+      queryClient.invalidateQueries({ queryKey: ["resignations"] });
       setShowModal(false);
       setEditingItem(null);
       toast.success("تم إضافة طلب الاستقالة بنجاح");
@@ -103,7 +89,7 @@ export default function Resignations() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Resignation.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["resignations"]);
+      queryClient.invalidateQueries({ queryKey: ["resignations"] });
       setShowModal(false);
       setEditingItem(null);
       toast.success("تم تحديث طلب الاستقالة بنجاح");
@@ -114,7 +100,7 @@ export default function Resignations() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.Resignation.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(["resignations"]);
+      queryClient.invalidateQueries({ queryKey: ["resignations"] });
       setShowDeleteDialog(false);
       setSelectedItem(null);
       toast.success("تم حذف طلب الاستقالة بنجاح");
@@ -192,28 +178,31 @@ export default function Resignations() {
     setShowDeleteDialog(true);
   };
 
-  const handleApprovalAction = async (action, notes) => {
+  const handleView = (item) => {
+    setSelectedItem(item);
+    setShowDetailsModal(true);
+  };
+
+  const handleForceApprove = async () => {
+    if (!selectedItem || !selectedItem.workflow_id) {
+      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
+      return;
+    }
+
+    setForceApproveLoading(true);
     try {
-      // Use entity: "resignation" which matches the backend map fix
-      const result = await base44.functions.invoke("processApproval", {
-        entity: "resignation",
-        record_id: selectedItem.id,
-        action,
-        notes,
+      await base44.entities.Workflow.customAction(selectedItem.workflow_id, 'force-approve', {
+        user_id: currentUser.id
       });
 
-      if (result.data.success) {
-        queryClient.invalidateQueries(["resignations"]);
-        setShowDetailsModal(false);
-        toast.success(
-          action === "approve" ? "تم الاعتماد بنجاح" : "تم الرفض"
-        );
-      } else {
-        toast.error(result.data.message || "حدث خطأ");
-      }
+      toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
+      setShowForceApproveDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["resignations"] });
     } catch (error) {
-      toast.error("حدث خطأ أثناء العملية");
+      console.error("Force approve error:", error);
+      toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
+    setForceApproveLoading(false);
   };
 
   const getEmployeeName = (employeeId) => {
@@ -221,39 +210,37 @@ export default function Resignations() {
     return employee?.full_name || "-";
   };
 
-  const handleView = async (item) => {
-    // Generate chain if missing
-    if (!item.approval_chain || item.approval_chain.length === 0) {
-        try {
-            const chainResponse = await base44.functions.invoke('getApprovalChain', {
-                entity: 'Resignation',
-                employeeId: item.employee_id
-            });
-            
-            const newChain = chainResponse.data.approvalChain || [];
-            
-            // Save to Backend to persist fix
-            await base44.entities.Resignation.update(item.id, {
-                approval_chain: newChain,
-                current_level_idx: 0, // Reset if regenerating
-                current_approval_level: newChain[0]?.level
-            });
+  const handleApprovalAction = async (action) => {
+    if (!pendingStep) return;
 
-            // Update local state
-            setSelectedItem({
-                ...item,
-                approval_chain: newChain
-            });
-        } catch (e) {
-            console.error('Error loading chain:', e);
-            setSelectedItem(item);
-        }
-    } else {
-        setSelectedItem(item);
-    }
-    
-    setShowDetailsModal(true);
+    toast.promise(
+      base44.entities.Approvals.action(pendingStep.id, "submit", {
+        user_id: currentUser.id,
+        action: action,
+        comments: approvalNotes,
+      }),
+      {
+        loading: "جاري معالجة الطلب...",
+        success: () => {
+          setShowDetailsModal(false);
+          setSelectedItem(null);
+          setApprovalNotes("");
+          queryClient.invalidateQueries({ queryKey: ["resignations"] });
+          return "تمت المعالجة بنجاح";
+        },
+        error: (err) => `حدث خطأ: ${err.message || "خطأ غير معروف"}`,
+      }
+    );
   };
+
+  const getPendingStep = (item) => {
+    if (!item.approval_steps) return null;
+    return item.approval_steps.find((s) => s.status === "pending");
+  };
+
+  const pendingStep = selectedItem ? getPendingStep(selectedItem) : null;
+  const isApprover = pendingStep && pendingStep.approver_user_id === currentUser?.id;
+  const [approvalNotes, setApprovalNotes] = useState("");
 
   const columns = [
     {
@@ -295,14 +282,18 @@ export default function Resignations() {
       ),
     },
     {
-      header: "فترة الإشعار",
-      accessor: "notice_period_days",
-      cell: (row) => `${row.notice_period_days || 30} يوم`,
-    },
-    {
       header: "الحالة",
-      accessor: "status",
-      cell: (row) => <StatusBadge status={row.status} />,
+      accessor: "workflow_status",
+      cell: (row) => (
+        <div className="flex flex-col gap-1">
+          <StatusBadge status={row.workflow_status || row.status} />
+          {row.workflow_status === 'pending' && getPendingStep(row) && (
+            <span className="text-[10px] text-gray-400">
+              بانتظار: {getPendingStep(row).role_name}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       header: "الإجراءات",
@@ -319,19 +310,34 @@ export default function Resignations() {
               <Eye className="w-4 h-4 ml-2" />
               عرض التفاصيل
             </DropdownMenuItem>
-            
-            {(row.status === 'pending' || row.status === 'draft') && (
+
+            {(row.workflow_status === 'returned' || row.status === 'draft') && (
               <>
                 <DropdownMenuItem onClick={() => handleEdit(row)}>
                   <Edit className="w-4 h-4 ml-2" />
-                  تعديل
+                  تعديل وإعادة تقديم
                 </DropdownMenuItem>
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={() => handleDelete(row)}
                   className="text-red-600 focus:text-red-600"
                 >
                   <Trash2 className="w-4 h-4 ml-2" />
                   حذف
+                </DropdownMenuItem>
+              </>
+            )}
+            {hasPermission(PERMISSIONS.FORCE_APPROVE) && (row.status === 'pending' || row.workflow_status === 'pending') && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedItem(row);
+                    setShowForceApproveDialog(true);
+                  }}
+                  className="text-blue-600 font-bold"
+                >
+                  <CheckCircle className="w-4 h-4 ml-2" />
+                  الاعتماد النهائي ⚡
                 </DropdownMenuItem>
               </>
             )}
@@ -342,7 +348,7 @@ export default function Resignations() {
   ];
 
   return (
-    <ProtectedRoute permission={PERMISSIONS.VIEW_ALL_EMPLOYEES}>
+    <ProtectedRoute permission={PERMISSIONS.VIEW_ALL_EMPLOYEES} fallback={<div className="p-8 text-center text-gray-500">لا تملك صلاحية الوصول لهذه الصفحة</div>}>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
@@ -513,6 +519,7 @@ export default function Resignations() {
           onClose={() => {
             setShowDetailsModal(false);
             setSelectedItem(null);
+            setApprovalNotes("");
           }}
           title="تفاصيل طلب الاستقالة"
           showFooter={false}
@@ -520,7 +527,26 @@ export default function Resignations() {
         >
           {selectedItem && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              {/* Status Banner */}
+              {pendingStep && (
+                <div className={`p-4 rounded-lg flex items-center justify-between ${isApprover ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${isApprover ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                      <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className={`font-semibold ${isApprover ? 'text-amber-900' : 'text-blue-900'}`}>
+                        {isApprover ? 'بانتظار مراجعتك واعتمادك' : `بانتظار: ${pendingStep.role_name}`}
+                      </p>
+                      <p className={`text-sm ${isApprover ? 'text-amber-700' : 'text-blue-700'}`}>
+                        {isApprover ? 'يرجى مراجعة تفاصيل الاستقالة واتخاذ الإجراء المناسب' : `هذا الطلب حالياً عند ${pendingStep.role_name}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="text-sm text-gray-500">رقم الطلب</p>
                   <p className="font-semibold font-mono">{selectedItem.request_number}</p>
@@ -534,8 +560,8 @@ export default function Resignations() {
                   <p className="font-semibold">
                     {selectedItem.resignation_date
                       ? format(new Date(selectedItem.resignation_date), "dd/MM/yyyy", {
-                          locale: ar,
-                        })
+                        locale: ar,
+                      })
                       : "-"}
                   </p>
                 </div>
@@ -544,8 +570,8 @@ export default function Resignations() {
                   <p className="font-semibold">
                     {selectedItem.end_of_service_date
                       ? format(new Date(selectedItem.end_of_service_date), "dd/MM/yyyy", {
-                          locale: ar,
-                        })
+                        locale: ar,
+                      })
                       : "-"}
                   </p>
                 </div>
@@ -555,18 +581,13 @@ export default function Resignations() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">الحالة</p>
-                  <StatusBadge status={selectedItem.status} />
+                  <StatusBadge status={selectedItem.workflow_status || selectedItem.status} />
                 </div>
               </div>
 
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-amber-900">سبب الاستقالة</p>
-                    <p className="text-amber-800 mt-1">{selectedItem.reason}</p>
-                  </div>
-                </div>
+              <div className="p-4 bg-white border rounded-lg">
+                <p className="font-semibold text-gray-900 mb-2">سبب الاستقالة</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{selectedItem.reason}</p>
               </div>
 
               {selectedItem.notes && (
@@ -579,14 +600,14 @@ export default function Resignations() {
               {selectedItem.attachments && selectedItem.attachments.length > 0 && (
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm font-semibold text-gray-700 mb-2">المرفقات</p>
-                  <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
                     {selectedItem.attachments.map((file, index) => (
                       <a
                         key={index}
                         href={file.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 p-2 bg-white rounded hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-2 p-2 bg-white border rounded hover:bg-gray-100 transition-colors"
                       >
                         <Paperclip className="w-4 h-4 text-gray-400" />
                         <span className="text-sm text-blue-600">{file.name}</span>
@@ -596,22 +617,45 @@ export default function Resignations() {
                 </div>
               )}
 
-              <ApprovalTimeline
-                approvalHistory={selectedItem.approval_history || []}
-                approvalChain={selectedItem.approval_chain || []}
-                currentLevel={selectedItem.current_approval_level}
-                status={selectedItem.status}
-              />
+              <div className="border-t pt-6">
+                <h3 className="font-bold text-lg mb-4">مسار الاعتمادات</h3>
+                <ApprovalTimeline
+                  approvalChain={selectedItem.approval_steps || []}
+                />
+              </div>
 
-              {/* Ensure we only show actions if chain exists */}
-              <ApprovalActions
-                entityName="resignation"
-                recordId={selectedItem.id}
-                onApproved={() => {
-                  queryClient.invalidateQueries(["resignations"]);
-                  setShowDetailsModal(false);
-                }}
-              />
+              {/* Approval Action Form */}
+              {isApprover && (
+                <div className="border-t pt-6 space-y-4">
+                  <Label>ملاحظات الاعتماد / الرفض</Label>
+                  <Textarea
+                    placeholder="اكتب ملاحظاتك هنا..."
+                    value={approvalNotes}
+                    onChange={(e) => setApprovalNotes(e.target.value)}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                      onClick={() => handleApprovalAction('return_for_review')}
+                    >
+                      إعادة للمراجعة
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleApprovalAction('reject')}
+                    >
+                      رفض الطلب
+                    </Button>
+                    <Button
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => handleApprovalAction('approve')}
+                    >
+                      اعتماد الطلب
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </FormModal>
@@ -622,6 +666,18 @@ export default function Resignations() {
           onConfirm={() => deleteMutation.mutate(selectedItem.id)}
           title="حذف طلب الاستقالة"
           description="هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء."
+        />
+
+        <ConfirmDialog
+          open={showForceApproveDialog}
+          onClose={() => setShowForceApproveDialog(false)}
+          onConfirm={handleForceApprove}
+          title="تأكيد الاعتماد النهائي الاستثنائي"
+          description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+          confirmLabel="تأكيد الاعتماد ⚡"
+          cancelLabel="إلغاء"
+          variant="destructive"
+          loading={forceApproveLoading}
         />
       </div>
     </ProtectedRoute>

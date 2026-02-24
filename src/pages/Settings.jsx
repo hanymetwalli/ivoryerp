@@ -1150,7 +1150,7 @@ export default function Settings() {
                     if (bp) {
                       setCurrentWorkflowSteps(bp.steps.map(s => ({
                         id: s.id,
-                        approver_type: s.is_direct_manager ? 'manager' : 'role',
+                        approver_type: s.approver_type || (s.is_direct_manager ? 'manager' : (s.is_dept_manager ? 'department_manager' : 'role')),
                         role_id: s.role_id,
                         show_approver_name: !!s.show_approver_name
                       })));
@@ -1167,7 +1167,10 @@ export default function Settings() {
                     <SelectItem value="PermissionRequest">طلب استئذان (PermissionRequest)</SelectItem>
                     <SelectItem value="OvertimeRequest">طلب عمل إضافي (Overtime)</SelectItem>
                     <SelectItem value="BonusRequest">طلب مكافأة (Bonus)</SelectItem>
+                    <SelectItem value="TrainingRequest">طلب تدريب (TrainingRequest)</SelectItem>
+                    <SelectItem value="ContractRequest">طلب عقد (ContractRequest)</SelectItem>
                     <SelectItem value="ResignationRequest">طلب استقالة (Resignation)</SelectItem>
+                    <SelectItem value="PerformanceEvaluation">تقييم الأداء (PerformanceEvaluation)</SelectItem>
                     <SelectItem value="Payroll">مسير رواتب (Payroll)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1198,7 +1201,7 @@ export default function Settings() {
                               onValueChange={(val) => {
                                 const newSteps = [...currentWorkflowSteps];
                                 newSteps[index].approver_type = val;
-                                if (val === 'manager') newSteps[index].role_id = null;
+                                if (val !== 'role') newSteps[index].role_id = null;
                                 setCurrentWorkflowSteps(newSteps);
                               }}
                             >
@@ -1207,6 +1210,7 @@ export default function Settings() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="manager">المدير المباشر</SelectItem>
+                                <SelectItem value="department_manager">مدير القسم</SelectItem>
                                 <SelectItem value="role">دور وظيفي محدد</SelectItem>
                               </SelectContent>
                             </Select>

@@ -10,7 +10,7 @@ class EmployeesController extends BaseController {
     
     protected $fillable = [
         'id', 'employee_number', 'full_name', 'id_number', 'phone', 'email',
-        'position', 'department', 'work_location_id', 'hire_date', 'status',
+        'position', 'department', 'work_location_id', 'hire_date', 'date_of_joining', 'status',
         'profile_image', 'documents', 'nationality', 'gender', 'birth_date',
         'bank_name', 'bank_account', 'iban'
     ];

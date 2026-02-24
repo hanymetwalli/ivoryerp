@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { base44 } from "@/api/ivoryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Edit,
-  Trash2,
   Eye,
+  Trash2,
   MoreVertical,
-  Download,
+  Calendar,
+  FileText,
+  User,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Search,
+  Filter,
+  Ban,
+  RefreshCw,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +35,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
@@ -34,7 +46,8 @@ import ApprovalActions from "@/components/ApprovalActions";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
-import { PERMISSIONS } from "@/components/permissions";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { hasPermission, PERMISSIONS } from "@/components/permissions";
 import { useAuth } from "@/components/AuthProvider";
 
 const CURRENCY_LABELS = {
@@ -44,6 +57,7 @@ const CURRENCY_LABELS = {
 };
 
 export default function Contracts() {
+  const queryClient = useQueryClient();
   const [contracts, setContracts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [contractTypes, setContractTypes] = useState([]);
@@ -51,20 +65,21 @@ export default function Contracts() {
   const [showForm, setShowForm] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
+  const [forceApproveLoading, setForceApproveLoading] = useState(false);
   const [selectedContract, setSelectedContract] = useState(null);
   const [formData, setFormData] = useState({});
   const [saving, setSaving] = useState(false);
   const [filteredContracts, setFilteredContracts] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
-  const [approvalChain, setApprovalChain] = useState([]);
 
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     userEmployee,
-    hasPermission, 
+    hasPermission: authHasPermission, // Renamed to avoid conflict with local hasPermission
     filterEmployees,
     filterEmployeeRelatedData,
-    loading: authLoading 
+    loading: authLoading
   } = useAuth();
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -78,11 +93,11 @@ export default function Contracts() {
 
   const loadData = async () => {
     if (authLoading) return;
-    
+
     setLoading(true);
     try {
       const [contractData, empData, typeData] = await Promise.all([
-        base44.entities.Contract.list("-created_date", 200),
+        base44.entities.Contract.list("-created_at", 200),
         base44.entities.Employee.list(),
         base44.entities.ContractType.list(),
       ]);
@@ -91,8 +106,8 @@ export default function Contracts() {
       setFilteredEmployees(allowedEmployees);
 
       let filtered = filterEmployeeRelatedData(
-        contractData, 
-        allowedEmployees, 
+        contractData,
+        allowedEmployees,
         (item) => item.employee_id
       );
 
@@ -143,7 +158,8 @@ export default function Contracts() {
   const handleAdd = () => {
     setSelectedContract(null);
     setFormData({
-      status: "active",
+      status: "draft",
+      approval_status: "pending",
       currency: "SAR",
       employee_id: employeeFilter || "",
       contract_number: generateContractNumber(),
@@ -162,26 +178,8 @@ export default function Contracts() {
     setShowForm(true);
   };
 
-  const handleView = async (contract) => {
+  const handleView = (contract) => {
     setSelectedContract(contract);
-    
-    // Check if contract already has approval chain
-    if (contract.approval_chain && contract.approval_chain.length > 0) {
-        setApprovalChain(contract.approval_chain);
-    } else {
-        // Fallback: Generate on the fly (for old records)
-        try {
-            const response = await base44.functions.invoke('getApprovalChain', {
-                employeeId: contract.employee_id,
-                entity: 'Contract',
-                requiresFinanceApproval: true
-            });
-            setApprovalChain(response.data.approvalChain || []);
-        } catch (error) {
-            console.error("Error loading chain:", error);
-        }
-    }
-    
     setShowViewModal(true);
   };
 
@@ -193,29 +191,42 @@ export default function Contracts() {
   const confirmDelete = async () => {
     try {
       const empName = getEmployeeName(selectedContract.employee_id);
-      
-      await base44.functions.invoke('logAuditEvent', {
+
+      await base44.entities.AuditLog.create({
         action: 'delete',
         entity_name: 'Contract',
         record_id: selectedContract.id,
         record_identifier: selectedContract.contract_number,
         details: `حذف عقد: ${empName} - رقم العقد: ${selectedContract.contract_number}`,
-        changed_data: {
-          employee: empName,
-          contract_number: selectedContract.contract_number,
-          basic_salary: selectedContract.basic_salary,
-          gross_salary: selectedContract.gross_salary,
-          status: selectedContract.status,
-        },
         severity: 'critical',
       });
-      
+
       await base44.entities.Contract.delete(selectedContract.id);
-      setContracts(contracts.filter((c) => c.id !== selectedContract.id));
+      loadData();
       setShowDeleteDialog(false);
       toast.success("تم حذف العقد بنجاح");
     } catch (error) {
       console.error("Error deleting contract:", error);
+    }
+  };
+
+  const handleForceApprove = async () => {
+    if (!selectedContract || !selectedContract.workflow_id) {
+      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
+      return;
+    }
+    setForceApproveLoading(true);
+    try {
+      await base44.entities.Workflow.customAction(selectedContract.workflow_id, 'force-approve', { user_id: currentUser.id });
+      toast.success("تم الاعتماد النهائي بنجاح");
+      loadData(); // Reload data to reflect changes
+      setShowForceApproveDialog(false);
+      setShowViewModal(false); // Close view modal after action
+    } catch (error) {
+      console.error("Error during force approval:", error);
+      toast.error("حدث خطأ أثناء الاعتماد النهائي: " + error.message);
+    } finally {
+      setForceApproveLoading(false);
     }
   };
 
@@ -241,63 +252,12 @@ export default function Contracts() {
         other_allowances: Number(formData.other_allowances) || 0,
       };
 
-      const empName = getEmployeeName(formData.employee_id);
-
-      // Generate Chain for new contracts
-      if (!selectedContract) {
-          const chainResponse = await base44.functions.invoke('getApprovalChain', {
-              employeeId: formData.employee_id,
-              entity: 'Contract',
-              requiresFinanceApproval: true
-          });
-          
-          const chain = chainResponse.data.approvalChain || [];
-          if (chain.length > 0) {
-              dataToSave.approval_chain = chain;
-              dataToSave.current_level_idx = 0;
-              dataToSave.current_status_desc = `جارى الاعتماد من: ${chain[0].level_name} (${chain[0].approver_name || chain[0].role_required})`;
-              dataToSave.status = 'pending'; // Start as pending approval
-          }
-      }
-
       if (selectedContract) {
-        const salaryChanged = selectedContract.basic_salary !== dataToSave.basic_salary;
-        
-        await base44.functions.invoke('logAuditEvent', {
-          action: 'update',
-          entity_name: 'Contract',
-          record_id: selectedContract.id,
-          record_identifier: formData.contract_number || selectedContract.contract_number,
-          details: `تعديل عقد: ${empName}${salaryChanged ? ` - تغيير الراتب من ${selectedContract.basic_salary} إلى ${dataToSave.basic_salary}` : ''}`,
-          changed_data: {
-            employee: empName,
-            basic_salary_before: selectedContract.basic_salary,
-            basic_salary_after: dataToSave.basic_salary,
-            gross_salary: dataToSave.gross_salary,
-          },
-          severity: salaryChanged ? 'high' : 'medium',
-        });
-        
         await base44.entities.Contract.update(selectedContract.id, dataToSave);
         toast.success("تم تحديث العقد بنجاح");
       } else {
         await base44.entities.Contract.create(dataToSave);
-        
-        await base44.functions.invoke('logAuditEvent', {
-          action: 'create',
-          entity_name: 'Contract',
-          record_identifier: formData.contract_number,
-          details: `إضافة عقد جديد: ${empName} - راتب ${dataToSave.basic_salary}`,
-          changed_data: {
-            employee: empName,
-            contract_number: formData.contract_number,
-            basic_salary: dataToSave.basic_salary,
-            gross_salary: dataToSave.gross_salary,
-          },
-          severity: 'high',
-        });
-        
-        toast.success("تمت إضافة العقد بنجاح");
+        toast.success("تم تقديم العقد للمراجعة");
       }
       loadData();
       setShowForm(false);
@@ -306,6 +266,16 @@ export default function Contracts() {
       toast.error("حدث خطأ أثناء الحفظ: " + error.message);
     }
     setSaving(false);
+  };
+
+  const handleResubmit = async (contract) => {
+    try {
+      await base44.entities.Contract.customAction(contract.id, 'resubmit');
+      toast.success("تم إعادة تقديم العقد بنجاح");
+      loadData();
+    } catch (error) {
+      toast.error("فشل إعادة التقديم");
+    }
   };
 
   const formatCurrency = (amount, currency = "SAR") => {
@@ -330,7 +300,14 @@ export default function Contracts() {
       contract.other_allowances || 0,
       contract.gross_salary || 0,
       contract.currency || "SAR",
-      contract.status === "active" ? "نشط" : contract.status === "expired" ? "منتهي" : "ملغي",
+      ({
+        active: "نشط",
+        inactive: "غير نشط",
+        terminated: "مفسوخ",
+        expired: "منتهي",
+        draft: "مسودة",
+        planned: "مستقبلي"
+      }[contract.status] || contract.status),
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -377,7 +354,21 @@ export default function Contracts() {
     {
       header: "الحالة",
       accessor: "status",
-      cell: (row) => <StatusBadge status={row.status} />,
+      cell: (row) => (
+        <div className="flex flex-col gap-1">
+          <StatusBadge status={row.approval_status || row.status} />
+          {row.approval_status === 'returned' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleResubmit(row)}
+              className="h-7 text-xs text-blue-600 hover:text-blue-800"
+            >
+              إعادة تقديم
+            </Button>
+          )}
+        </div>
+      ),
     },
     {
       header: "الإجراءات",
@@ -403,6 +394,21 @@ export default function Contracts() {
                   <Edit className="w-4 h-4 ml-2" />
                   تعديل
                 </DropdownMenuItem>
+              )}
+              {hasPermission(PERMISSIONS.FORCE_APPROVE) && row.approval_status === 'pending' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedContract(row);
+                      setShowForceApproveDialog(true);
+                    }}
+                    className="text-blue-600 font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 ml-2" />
+                    الاعتماد النهائي ⚡
+                  </DropdownMenuItem>
+                </>
               )}
               {canDeleteRow && (
                 <DropdownMenuItem onClick={() => handleDelete(row)} className="text-red-600">
@@ -608,7 +614,9 @@ export default function Contracts() {
                   <SelectContent>
                     <SelectItem value="active">نشط</SelectItem>
                     <SelectItem value="expired">منتهي</SelectItem>
-                    <SelectItem value="terminated">ملغي</SelectItem>
+                    <SelectItem value="terminated">مفسوخ</SelectItem>
+                    <SelectItem value="planned">مستقبلي</SelectItem>
+                    <SelectItem value="draft">مسودة</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -623,8 +631,56 @@ export default function Contracts() {
               rows={3}
             />
           </div>
+
+          {selectedContract && (
+            <div className="mt-8 space-y-6">
+              <h3 className="text-lg font-bold flex items-center gap-2 border-b pb-2">
+                <Clock className="w-5 h-5 text-blue-600" />
+                مسار الاعتمادات
+              </h3>
+
+              <ApprovalTimeline
+                modelId={selectedContract.id}
+                modelType="contracts"
+              />
+
+              <div className="flex justify-end gap-3 mt-4">
+                <ApprovalActions
+                  modelId={selectedContract.id}
+                  modelType="contracts"
+                  onActionComplete={() => {
+                    queryClient.invalidateQueries({ queryKey: ["contracts"] });
+                    loadData();
+                  }}
+                />
+
+                {hasPermission(PERMISSIONS.FORCE_APPROVE) && selectedContract.approval_status === 'pending' && (
+                  <Button
+                    onClick={() => setShowForceApproveDialog(true)}
+                    variant="outline"
+                    className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 ml-2" />
+                    الاعتماد النهائي الاستثنائي ⚡
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        open={showForceApproveDialog}
+        onClose={() => setShowForceApproveDialog(false)}
+        onConfirm={handleForceApprove}
+        title="الاعتماد النهائي الاستثنائي"
+        description="هل أنت متأكد من رغبتك في تجاوز جميع خطوات الموافقة واعتماد هذا العقد نهائياً؟"
+        confirmLabel="نعم، اعتماد"
+        cancelLabel="تراجع"
+        variant="destructive"
+        loading={forceApproveLoading}
+      />
 
       {/* View Modal */}
       <FormModal
@@ -633,6 +689,7 @@ export default function Contracts() {
         title="تفاصيل العقد"
         showFooter={false}
         size="lg"
+        onSubmit={() => { }}
       >
         {selectedContract && (
           <div className="space-y-6" dir="rtl">
@@ -643,12 +700,12 @@ export default function Contracts() {
                 </h3>
                 <p className="text-gray-500">عقد رقم: {selectedContract.contract_number || "-"}</p>
                 {selectedContract.current_status_desc && (
-                    <p className="text-sm text-blue-600 mt-2 font-medium">
-                        {selectedContract.current_status_desc}
-                    </p>
+                  <p className="text-sm text-blue-600 mt-2 font-medium">
+                    {selectedContract.current_status_desc}
+                  </p>
                 )}
               </div>
-              <StatusBadge status={selectedContract.status} />
+              <StatusBadge status={selectedContract.approval_status || selectedContract.status} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -716,23 +773,23 @@ export default function Contracts() {
               </div>
             </div>
 
-            {selectedContract.status === 'pending' && (
-                <div className="border-t pt-4">
-                    <ApprovalActions 
-                        entityName="Contract" 
-                        recordId={selectedContract.id} 
-                        onApproved={() => {
-                            setShowViewModal(false);
-                            loadData();
-                        }}
-                    />
-                </div>
+            {(selectedContract.approval_status === 'pending' || selectedContract.status === 'pending') && (
+              <div className="border-t pt-4">
+                <ApprovalActions
+                  entityName="contracts"
+                  recordId={selectedContract.id}
+                  onApproved={() => {
+                    setShowViewModal(false);
+                    loadData();
+                  }}
+                />
+              </div>
             )}
 
-            {approvalChain.length > 0 && (
-                <div className="border-t pt-4">
-                    <ApprovalTimeline approvalChain={approvalChain} />
-                </div>
+            {selectedContract.approval_steps?.length > 0 && (
+              <div className="border-t pt-4">
+                <ApprovalTimeline approvalChain={selectedContract.approval_steps} />
+              </div>
             )}
 
             {selectedContract.notes && (
@@ -753,6 +810,6 @@ export default function Contracts() {
         title="حذف العقد"
         description="هل أنت متأكد من حذف هذا العقد؟"
       />
-    </div>
+    </div >
   );
 }

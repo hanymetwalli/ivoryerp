@@ -38,8 +38,8 @@ import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
-import ApprovalTimeline from "@/components/ApprovalTimeline";
-import ApprovalActions from "@/components/ApprovalActions";
+import ApprovalTimeline, { getCurrentPendingStep } from "@/components/ApprovalTimeline";
+import * as XLSX from "xlsx";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
@@ -57,23 +57,34 @@ export default function Leaves() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState({
+    employee_id: "",
+    leave_type_id: "",
+    start_date: "",
+    end_date: "",
+    reason: "",
+    status: "pending",
+  });
   const [assignData, setAssignData] = useState({});
   const [saving, setSaving] = useState(false);
+  const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
+  const [forceApproveLoading, setForceApproveLoading] = useState(false);
+  const [approvalProcessing, setApprovalProcessing] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [showApprovalForm, setShowApprovalForm] = useState(null); // 'approve' | 'reject' | 'return' | null
   const [activeTab, setActiveTab] = useState("requests");
   const [showImportModal, setShowImportModal] = useState(false);
-  const [approvalChain, setApprovalChain] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
   const [filteredBalances, setFilteredBalances] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
 
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     userEmployee,
-    hasPermission, 
+    hasPermission,
     filterEmployees,
     filterEmployeeRelatedData,
-    loading: authLoading 
+    loading: authLoading
   } = useAuth();
 
   useEffect(() => {
@@ -84,7 +95,7 @@ export default function Leaves() {
 
   const loadData = async () => {
     if (authLoading) return;
-    
+
     setLoading(true);
     try {
       const [requests, balances, empData, typeData] = await Promise.all([
@@ -127,17 +138,17 @@ export default function Leaves() {
     const balance = leaveBalances.find(
       (b) => b.employee_id === employeeId && b.leave_type_id === leaveTypeId && b.year === currentYear
     );
-    
+
     if (balance) return balance;
 
     // Fallback to default balance from Leave Type
     const leaveType = leaveTypes.find(t => t.id === leaveTypeId);
     if (leaveType) {
-        return { 
-            total_balance: leaveType.default_balance, 
-            used_balance: 0, 
-            remaining_balance: leaveType.default_balance 
-        };
+      return {
+        total_balance: leaveType.default_balance,
+        used_balance: 0,
+        remaining_balance: leaveType.default_balance
+      };
     }
 
     return { total_balance: 0, used_balance: 0, remaining_balance: 0 };
@@ -157,28 +168,29 @@ export default function Leaves() {
 
   const handleView = async (request) => {
     setSelectedRequest(request);
-    
-    // Check if request already has a saved chain (New System)
-    if (request.approval_chain && request.approval_chain.length > 0) {
-        setApprovalChain(request.approval_chain);
-        setShowViewModal(true);
-        return;
+    setShowViewModal(true);
+  };
+
+  const handleForceApprove = async () => {
+    if (!selectedRequest || !selectedRequest.workflow_id) {
+      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
+      return;
     }
 
-    // Fallback: Generate chain on the fly (Legacy System)
+    setForceApproveLoading(true);
     try {
-      const response = await base44.functions.invoke('getApprovalChain', {
-        employeeId: request.employee_id,
-        requiresFinanceApproval: request.requires_finance_approval !== false,
-        entity: 'LeaveRequest',
+      await base44.entities.Workflow.customAction(selectedRequest.workflow_id, 'force-approve', {
+        user_id: currentUser.id
       });
-      setApprovalChain(response.data.approvalChain || []);
+
+      toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
+      setShowForceApproveDialog(false);
+      loadData();
     } catch (error) {
-      console.error('Error loading approval chain:', error);
-      toast.error('حدث خطأ في تحميل سلسلة الاعتماد');
+      console.error("Force approve error:", error);
+      toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
-    
-    setShowViewModal(true);
+    setForceApproveLoading(false);
   };
 
   const handleDelete = (request) => {
@@ -190,7 +202,7 @@ export default function Leaves() {
     try {
       const empName = getEmployeeName(selectedRequest.employee_id);
       const leaveTypeName = getLeaveTypeName(selectedRequest.leave_type_id);
-      
+
       // ✅ استرداد الرصيد إذا كان الطلب معتمداً
       let recoveredDays = 0;
       if (selectedRequest.status === "approved") {
@@ -201,21 +213,21 @@ export default function Leaves() {
             b.leave_type_id === selectedRequest.leave_type_id &&
             b.year === currentYear
         );
-        
+
         if (balance) {
           const newUsed = Math.max(0, (balance.used_balance || 0) - selectedRequest.days_count);
           const newRemaining = balance.total_balance - newUsed;
-          
+
           await base44.entities.EmployeeLeaveBalance.update(balance.id, {
             used_balance: newUsed,
             remaining_balance: newRemaining,
           });
-          
+
           recoveredDays = selectedRequest.days_count;
           toast.success(`✅ تم استرداد ${selectedRequest.days_count} يوم إلى رصيد الموظف`);
         }
       }
-      
+
       // ✅ تسجيل في Audit Log
       await base44.functions.invoke('logAuditEvent', {
         action: 'delete',
@@ -232,18 +244,18 @@ export default function Leaves() {
         },
         severity: selectedRequest.status === 'approved' ? 'critical' : 'high',
       });
-      
+
       await base44.entities.LeaveRequest.delete(selectedRequest.id);
-      
+
       // تحديث القوائم المحلية فوراً
       const updatedRequests = leaveRequests.filter((r) => r.id !== selectedRequest.id);
       const updatedFiltered = filteredRequests.filter((r) => r.id !== selectedRequest.id);
       setLeaveRequests(updatedRequests);
       setFilteredRequests(updatedFiltered);
-      
+
       setShowDeleteDialog(false);
       toast.success("تم حذف الطلب بنجاح");
-      
+
       // إعادة تحميل البيانات لتحديث الأرصدة
       loadData();
     } catch (error) {
@@ -252,44 +264,6 @@ export default function Leaves() {
     }
   };
 
-  const handleStatusChange = async (request, newStatus, notes = "") => {
-    try {
-      const updateData = { status: newStatus };
-      
-      if (newStatus === "manager_approved") {
-        updateData.manager_approval_date = new Date().toISOString();
-        if (notes) updateData.manager_notes = notes;
-      } else if (newStatus === "gm_approved") {
-        updateData.gm_approval_date = new Date().toISOString();
-        if (notes) updateData.gm_notes = notes;
-      } else if (newStatus === "hr_approved") {
-        updateData.hr_approval_date = new Date().toISOString();
-        if (notes) updateData.hr_notes = notes;
-        
-        // Update leave balance
-        const currentYear = new Date().getFullYear();
-        const balance = leaveBalances.find(
-          (b) =>
-            b.employee_id === request.employee_id &&
-            b.leave_type_id === request.leave_type_id &&
-            b.year === currentYear
-        );
-        if (balance) {
-          await base44.entities.EmployeeLeaveBalance.update(balance.id, {
-            used_balance: (balance.used_balance || 0) + request.days_count,
-            remaining_balance: balance.total_balance - ((balance.used_balance || 0) + request.days_count),
-          });
-        }
-      }
-      
-      await base44.entities.LeaveRequest.update(request.id, updateData);
-      loadData();
-      toast.success("تم تحديث حالة الطلب");
-    } catch (error) {
-      console.error("Error updating status:", error);
-      toast.error("حدث خطأ أثناء التحديث");
-    }
-  };
 
   const handleSubmit = async () => {
     if (!formData.employee_id || !formData.leave_type_id || !formData.start_date || !formData.end_date) {
@@ -313,7 +287,7 @@ export default function Leaves() {
       toast.error(`⚠️ لا يوجد رصيد متاح لهذا النوع من الإجازات`);
       return;
     }
-    
+
     if (daysCount > balance.remaining_balance) {
       toast.error(
         `⚠️ الرصيد المتبقي غير كافٍ!\n` +
@@ -330,38 +304,23 @@ export default function Leaves() {
 
     setSaving(true);
     try {
-      const requestNumberResponse = await base44.functions.invoke('generateRequestNumber', {
-        entityName: 'LeaveRequest',
-        prefix: 'LV',
-      });
-
       const dataToSave = {
         ...formData,
-        request_number: requestNumberResponse.data.requestNumber,
-        days_count: daysCount,
-        requires_finance_approval: true,
+        days_count: daysCount
       };
 
-      if (!selectedRequest) {
-        const chainResponse = await base44.functions.invoke('getApprovalChain', {
-          employeeId: formData.employee_id,
-          requiresFinanceApproval: true,
-        });
-        
-        const chain = chainResponse.data.approvalChain || [];
-        if (chain.length > 0) {
-          dataToSave.current_approval_level = chain[0].level;
-          dataToSave.current_level_idx = 0;
-          dataToSave.approval_chain = chain;
-          
-          // Set initial status description
-          dataToSave.current_status_desc = `جارى الاعتماد من: ${chain[0].level_name} (${chain[0].approver_name || chain[0].role_required})`;
-        }
-      }
-
       if (selectedRequest) {
-        await base44.entities.LeaveRequest.update(selectedRequest.id, dataToSave);
-        toast.success("تم تحديث الطلب");
+        // If the request was returned, update and re-submit to restart the workflow
+        if (selectedRequest.status === 'returned') {
+          dataToSave.status = 'pending';
+          await base44.entities.LeaveRequest.update(selectedRequest.id, dataToSave);
+          // Re-submit: trigger new approval workflow
+          await base44.entities.LeaveRequest.action(selectedRequest.id, 'resubmit', {});
+          toast.success("تم إعادة تقديم الطلب بنجاح");
+        } else {
+          await base44.entities.LeaveRequest.update(selectedRequest.id, dataToSave);
+          toast.success("تم تحديث الطلب");
+        }
       } else {
         await base44.entities.LeaveRequest.create(dataToSave);
         toast.success("تم إضافة الطلب");
@@ -425,9 +384,9 @@ export default function Leaves() {
       "عدد الأيام": req.days_count,
       السبب: req.reason || "",
       الحالة: req.status === "pending" ? "قيد الانتظار" :
-                req.status === "manager_approved" ? "موافقة المدير" :
-                req.status === "gm_approved" ? "موافقة المدير العام" :
-                req.status === "hr_approved" ? "معتمد" : "مرفوض",
+        req.status === "manager_approved" ? "موافقة المدير" :
+          req.status === "gm_approved" ? "موافقة المدير العام" :
+            req.status === "hr_approved" ? "معتمد" : "مرفوض",
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -491,10 +450,10 @@ export default function Leaves() {
                 <Eye className="w-4 h-4 ml-2" />
                 عرض
               </DropdownMenuItem>
-              {canEdit && (
+              {canEdit && (row.status === 'pending' || row.status === 'returned') && (
                 <DropdownMenuItem onClick={() => handleEdit(row)}>
                   <Edit className="w-4 h-4 ml-2" />
-                  تعديل
+                  {row.status === 'returned' ? 'تعديل وإعادة تقديم' : 'تعديل'}
                 </DropdownMenuItem>
               )}
               {canDelete && (
@@ -502,6 +461,21 @@ export default function Leaves() {
                   <Trash2 className="w-4 h-4 ml-2" />
                   حذف
                 </DropdownMenuItem>
+              )}
+              {hasPermission(PERMISSIONS.FORCE_APPROVE) && row.status === 'pending' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedRequest(row);
+                      setShowForceApproveDialog(true);
+                    }}
+                    className="text-blue-600 font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 ml-2" />
+                    الاعتماد النهائي ⚡
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -643,6 +617,18 @@ export default function Leaves() {
         </TabsContent>
       </Tabs>
 
+      <ConfirmDialog
+        open={showForceApproveDialog}
+        onClose={() => setShowForceApproveDialog(false)}
+        onConfirm={handleForceApprove}
+        title="تأكيد الاعتماد النهائي الاستثنائي"
+        description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+        confirmText="تأكيد الاعتماد ⚡"
+        cancelText="إلغاء"
+        variant="destructive"
+        loading={approvalProcessing}
+      />
+
       <FormModal
         open={showForm}
         onClose={() => setShowForm(false)}
@@ -754,22 +740,28 @@ export default function Leaves() {
                 <StatusBadge status={selectedRequest.status} />
               </div>
 
-              {/* عرض الحالة المرئية الحالية */}
-              {selectedRequest.current_status_desc && (
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-r-4 border-indigo-500 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Clock className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 mb-1">📍 الحالة الحالية</h4>
-                      <p className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">
-                        {selectedRequest.current_status_desc}
-                      </p>
+              {/* Dynamic Pending Approver Badge */}
+              {(() => {
+                const pendingStep = getCurrentPendingStep(selectedRequest.approval_steps);
+                if (!pendingStep || selectedRequest.status === 'approved' || selectedRequest.status === 'rejected') return null;
+                const label = pendingStep.approver_job_title || pendingStep.role_name || 'غير محدد';
+                const name = pendingStep.is_name_visible && pendingStep.approver_name ? ` - ${pendingStep.approver_name}` : '';
+                return (
+                  <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-r-4 border-indigo-500 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 mb-1">📍 جاري الاعتماد من</h4>
+                        <p className="text-sm text-gray-800 font-medium">
+                          {label}{name}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -824,64 +816,92 @@ export default function Leaves() {
               </div>
             </div>
 
-            {selectedRequest.status === "pending" && (
-              <ApprovalActions
-                entityName="LeaveRequest"
-                recordId={selectedRequest.id}
-                onApproved={() => {
-                  loadData();
-                  setShowViewModal(false);
-                }}
-              />
-            )}
-
-            {approvalChain && approvalChain.length > 0 && (
+            {selectedRequest.approval_steps && selectedRequest.approval_steps.length > 0 && (
               <div className="border-t pt-4">
                 <ApprovalTimeline
-                  approvalHistory={selectedRequest.approval_history} // Legacy
-                  approvalChain={approvalChain} // New System
-                  currentLevel={selectedRequest.current_approval_level}
-                  status={selectedRequest.status}
+                  approvalChain={selectedRequest.approval_steps}
                 />
               </div>
             )}
 
-            {/* Legacy approval dates - kept for backward compatibility */}
-            {selectedRequest.manager_approval_date && !(selectedRequest.approval_history && selectedRequest.approval_history.length > 0) && (
-              <div className="border-t pt-3">
-                <p className="text-sm text-gray-500">موافقة المدير المباشر</p>
-                <p className="text-xs text-gray-600">
-                  {format(parseISO(selectedRequest.manager_approval_date), "dd/MM/yyyy - HH:mm", { locale: ar })}
-                </p>
-                {selectedRequest.manager_notes && (
-                  <p className="text-sm mt-1">{selectedRequest.manager_notes}</p>
-                )}
-              </div>
-            )}
+            {/* Inline Approval Actions */}
+            {(() => {
+              const pendingStep = getCurrentPendingStep(selectedRequest.approval_steps);
+              if (!pendingStep || !currentUser) return null;
+              const isMyTurn = pendingStep.approver_user_id === currentUser.id;
+              if (!isMyTurn) return null;
 
-            {selectedRequest.gm_approval_date && (
-              <div className="border-t pt-3">
-                <p className="text-sm text-gray-500">موافقة المدير العام</p>
-                <p className="text-xs text-gray-600">
-                  {format(parseISO(selectedRequest.gm_approval_date), "dd/MM/yyyy - HH:mm", { locale: ar })}
-                </p>
-                {selectedRequest.gm_notes && (
-                  <p className="text-sm mt-1">{selectedRequest.gm_notes}</p>
-                )}
-              </div>
-            )}
+              const handleApprovalAction = async (action) => {
+                setApprovalProcessing(true);
+                try {
+                  await base44.entities.Approvals.action(pendingStep.id, 'submit', {
+                    user_id: currentUser.id,
+                    action: action,
+                    comments: approvalNotes
+                  });
+                  toast.success(action === 'approved' ? 'تم الاعتماد بنجاح' : action === 'rejected' ? 'تم الرفض' : 'تم الإرجاع');
+                  setShowApprovalForm(null);
+                  setApprovalNotes("");
+                  setShowViewModal(false);
+                  loadData();
+                } catch (error) {
+                  console.error('Approval action error:', error);
+                  toast.error('حدث خطأ أثناء تنفيذ الإجراء');
+                }
+                setApprovalProcessing(false);
+              };
 
-            {selectedRequest.hr_approval_date && (
-              <div className="border-t pt-3">
-                <p className="text-sm text-gray-500">الاعتماد النهائي (HR)</p>
-                <p className="text-xs text-gray-600">
-                  {format(parseISO(selectedRequest.hr_approval_date), "dd/MM/yyyy - HH:mm", { locale: ar })}
-                </p>
-                {selectedRequest.hr_notes && (
-                  <p className="text-sm mt-1">{selectedRequest.hr_notes}</p>
-                )}
-              </div>
-            )}
+              return (
+                <div className="border-t pt-4 space-y-3">
+                  <h4 className="font-semibold text-gray-700">اتخاذ إجراء</h4>
+                  {!showApprovalForm ? (
+                    <div className="flex gap-3">
+                      <Button onClick={() => setShowApprovalForm('approve')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                        <CheckCircle className="w-4 h-4 ml-2" />
+                        اعتماد
+                      </Button>
+                      <Button onClick={() => setShowApprovalForm('return')} variant="outline" className="flex-1 text-orange-600 border-orange-200 hover:bg-orange-50">
+                        إرجاع
+                      </Button>
+                      <Button onClick={() => setShowApprovalForm('reject')} variant="outline" className="flex-1 text-red-600 border-red-200 hover:bg-red-50">
+                        <XCircle className="w-4 h-4 ml-2" />
+                        رفض
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className={`p-4 rounded-lg border ${showApprovalForm === 'approve' ? 'bg-green-50 border-green-100' :
+                      showApprovalForm === 'return' ? 'bg-orange-50 border-orange-100' :
+                        'bg-red-50 border-red-100'
+                      }`}>
+                      <Textarea
+                        placeholder="ملاحظات (اختياري)..."
+                        value={approvalNotes}
+                        onChange={(e) => setApprovalNotes(e.target.value)}
+                        className="bg-white mb-3 min-h-[80px]"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleApprovalAction(
+                            showApprovalForm === 'approve' ? 'approved' :
+                              showApprovalForm === 'return' ? 'returned' : 'rejected'
+                          )}
+                          disabled={approvalProcessing}
+                          className={`flex-1 text-white ${showApprovalForm === 'approve' ? 'bg-green-600 hover:bg-green-700' :
+                            showApprovalForm === 'return' ? 'bg-orange-600 hover:bg-orange-700' :
+                              'bg-red-600 hover:bg-red-700'
+                            }`}
+                        >
+                          {approvalProcessing ? 'جاري التنفيذ...' : 'تأكيد'}
+                        </Button>
+                        <Button variant="outline" onClick={() => { setShowApprovalForm(null); setApprovalNotes(""); }} className="flex-1">
+                          إلغاء
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </FormModal>
@@ -960,6 +980,17 @@ export default function Leaves() {
           </div>
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        open={showForceApproveDialog}
+        onClose={() => setShowForceApproveDialog(false)}
+        onConfirm={handleForceApprove}
+        title="الاعتماد النهائي الاستثنائي ⚡"
+        description={`هل أنت متأكد من رغبتك في استخدام صلاحية الاعتماد الاستثنائي لهذا الطلب؟ سيتم تجاهل بقية خطوات سير العمل واعتماد الطلب فوراً.`}
+        confirmLabel="تأكيد الاعتماد ⚡"
+        variant="primary"
+        loading={forceApproveLoading}
+      />
 
       <ConfirmDialog
         open={showDeleteDialog}

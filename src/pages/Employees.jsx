@@ -74,14 +74,14 @@ export default function Employees() {
   const [saving, setSaving] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
-  
+
   // استخدام نظام الصلاحيات المركزي
-  const { 
-    currentUser, 
-    userEmployee, 
-    hasPermission, 
+  const {
+    currentUser,
+    userEmployee,
+    hasPermission,
     getDataScope,
-    loading: authLoading 
+    loading: authLoading
   } = useAuth();
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function Employees() {
 
   const loadData = async () => {
     if (authLoading) return; // انتظر تحميل بيانات المستخدم
-    
+
     setLoading(true);
     try {
       const [empData, deptData, posData, bankData, natData, locData] = await Promise.all([
@@ -103,20 +103,20 @@ export default function Employees() {
         base44.entities.Nationality.list(),
         base44.entities.WorkLocation.list(),
       ]);
-      
+
       setEmployees(empData);
       setDepartments(deptData);
       setPositions(posData);
       setBanks(bankData);
       setNationalities(natData);
       setWorkLocations(locData);
-      
+
       // تطبيق نطاق البيانات
       const viewPermission = PERMISSIONS.VIEW_ALL_EMPLOYEES;
       const dataScope = getDataScope(viewPermission);
-      
+
       let filtered = empData;
-      
+
       if (dataScope === 'own') {
         // الموظف يرى بياناته فقط
         if (!userEmployee) {
@@ -134,7 +134,7 @@ export default function Employees() {
         }
       }
       // else: dataScope === 'all' - المدير العام يرى الكل
-      
+
       setFilteredEmployees(filtered);
     } catch (error) {
       console.error("Error loading data:", error);
@@ -198,7 +198,7 @@ export default function Employees() {
         },
         severity: 'critical',
       });
-      
+
       await base44.entities.Employee.delete(selectedEmployee.id);
       setEmployees(employees.filter((e) => e.id !== selectedEmployee.id));
       setShowDeleteDialog(false);
@@ -263,12 +263,12 @@ export default function Employees() {
           },
           severity: 'medium',
         });
-        
+
         await base44.entities.Employee.update(selectedEmployee.id, formData);
         toast.success("تم تحديث بيانات الموظف");
       } else {
         await base44.entities.Employee.create(formData);
-        
+
         // ✅ تسجيل الإضافة في Audit Log
         await base44.functions.invoke('logAuditEvent', {
           action: 'create',
@@ -283,7 +283,7 @@ export default function Employees() {
           },
           severity: 'high',
         });
-        
+
         toast.success("تمت إضافة الموظف بنجاح");
       }
       loadData();
@@ -301,7 +301,7 @@ export default function Employees() {
   };
 
   const exportToCSV = () => {
-    const headers = ["رقم الموظف", "الاسم الكامل", "رقم الهوية", "الجوال", "البريد الإلكتروني", "المنصب", "القسم", "مكان العمل", "الجنسية", "الجنس", "الحالة"];
+    const headers = ["رقم الموظف", "الاسم الكامل", "رقم الهوية", "الجوال", "البريد الإلكتروني", "المنصب", "القسم", "مكان العمل", "تاريخ التعيين", "الجنسية", "الجنس", "الحالة"];
     const rows = employees.map((emp) => [
       emp.employee_number || "",
       emp.full_name || "",
@@ -311,9 +311,15 @@ export default function Employees() {
       emp.position || "",
       emp.department || "",
       getWorkLocationName(emp.work_location_id),
+      emp.date_of_joining || "",
       emp.nationality || "",
       GENDER_LABELS[emp.gender] || "",
-      emp.status === "active" ? "نشط" : emp.status === "inactive" ? "غير نشط" : "منتهي",
+      ({
+        active: "نشط",
+        inactive: "غير نشط",
+        terminated: "مفسوخ",
+        expired: "منتهي"
+      }[emp.status] || emp.status),
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -329,23 +335,23 @@ export default function Employees() {
   // التحقق من صلاحيات التعديل والحذف لكل موظف
   const canEditEmployee = (employee) => {
     if (!hasPermission(PERMISSIONS.EDIT_EMPLOYEE)) return false;
-    
+
     const scope = getDataScope(PERMISSIONS.EDIT_EMPLOYEE);
     if (scope === 'all') return true;
     if (scope === 'own') return userEmployee?.id === employee.id;
     if (scope === 'department') return userEmployee?.department === employee.department;
-    
+
     return false;
   };
 
   const canDeleteEmployee = (employee) => {
     if (!hasPermission(PERMISSIONS.DELETE_EMPLOYEE)) return false;
-    
+
     const scope = getDataScope(PERMISSIONS.DELETE_EMPLOYEE);
     if (scope === 'all') return true;
     if (scope === 'own') return userEmployee?.id === employee.id;
     if (scope === 'department') return userEmployee?.department === employee.department;
-    
+
     return false;
   };
 
@@ -392,7 +398,7 @@ export default function Employees() {
       cell: (row) => {
         const canEdit = canEditEmployee(row);
         const canDelete = canDeleteEmployee(row);
-        
+
         // إذا لم يكن هناك أي صلاحية، لا نعرض القائمة
         if (!canEdit && !canDelete) {
           return (
@@ -402,7 +408,7 @@ export default function Employees() {
             </Button>
           );
         }
-        
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -622,8 +628,8 @@ export default function Employees() {
                     value={formData.department || ""}
                     onValueChange={(v) => {
                       const dept = departments.find(d => d.name === v);
-                      setFormData({ 
-                        ...formData, 
+                      setFormData({
+                        ...formData,
                         department: v,
                         general_manager: dept?.general_manager_id || formData.general_manager
                       });
@@ -663,12 +669,13 @@ export default function Employees() {
                   </Select>
                 </div>
                 <div>
-                  <Label>تاريخ التعيين</Label>
+                  <Label>تاريخ التعيين *</Label>
                   <Input
                     type="date"
-                    value={formData.hire_date || ""}
+                    required
+                    value={formData.date_of_joining || ""}
                     onChange={(e) =>
-                      setFormData({ ...formData, hire_date: e.target.value })
+                      setFormData({ ...formData, date_of_joining: e.target.value })
                     }
                   />
                 </div>
@@ -684,12 +691,12 @@ export default function Employees() {
                     <SelectContent>
                       <SelectItem value="active">نشط</SelectItem>
                       <SelectItem value="inactive">غير نشط</SelectItem>
-                      <SelectItem value="terminated">منتهي</SelectItem>
+                      <SelectItem value="terminated">مفسوخ</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              
+
 
             </TabsContent>
 

@@ -16,7 +16,18 @@ class WorkflowSettingsController extends BaseController {
         foreach ($blueprints['data'] as &$blueprint) {
             $stmt = $this->db->prepare("SELECT * FROM workflow_blueprint_steps WHERE blueprint_id = :bid ORDER BY step_order ASC");
             $stmt->execute([':bid' => $blueprint['id']]);
-            $blueprint['steps'] = $stmt->fetchAll();
+            $steps = $stmt->fetchAll();
+            
+            foreach ($steps as &$step) {
+                if ($step['is_direct_manager']) {
+                    $step['approver_type'] = 'manager';
+                } elseif (isset($step['is_dept_manager']) && $step['is_dept_manager']) {
+                    $step['approver_type'] = 'department_manager';
+                } else {
+                    $step['approver_type'] = 'role';
+                }
+            }
+            $blueprint['steps'] = $steps;
         }
         
         return $blueprints;
@@ -69,14 +80,15 @@ class WorkflowSettingsController extends BaseController {
             foreach ($steps as $step) {
                 $this->db->prepare("
                     INSERT INTO workflow_blueprint_steps 
-                    (id, blueprint_id, step_order, role_id, is_direct_manager, show_approver_name) 
-                    VALUES (:id, :bid, :order, :rid, :mgr, :show)
+                    (id, blueprint_id, step_order, role_id, is_direct_manager, is_dept_manager, show_approver_name) 
+                    VALUES (:id, :bid, :order, :rid, :mgr, :dept_mgr, :show)
                 ")->execute([
                     ':id' => $this->generateUUID(),
                     ':bid' => $blueprintId,
                     ':order' => $order++,
                     ':rid' => $step['role_id'] ?? null,
                     ':mgr' => ($step['approver_type'] === 'manager') ? 1 : 0,
+                    ':dept_mgr' => ($step['approver_type'] === 'department_manager') ? 1 : 0,
                     ':show' => $step['show_approver_name'] ? 1 : 0
                 ]);
             }

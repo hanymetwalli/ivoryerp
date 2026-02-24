@@ -148,6 +148,9 @@ export const PERMISSIONS = {
   APPROVE_PERMISSION_REQUEST_HR: 'approve_permission_requests_hr',
   APPROVE_PERMISSION_REQUEST_FINANCE: 'approve_permission_requests_finance',
 
+  // الاعتمادات الاستثنائية
+  FORCE_APPROVE: 'force_approve',
+
   // أخرى
   CHECKIN_CHECKOUT: 'checkin_checkout',
   VIEW_DASHBOARD: 'view_dashboard',

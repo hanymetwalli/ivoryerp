@@ -149,6 +149,8 @@ const ALL_PERMISSIONS = [
   { code: "edit_job_description", name: "تعديل وصف وظيفي", category: "job_descriptions", scope: true },
   { code: "delete_job_description", name: "حذف وصف وظيفي", category: "job_descriptions", scope: true },
   { code: "add_employee_notes", name: "إضافة ملاحظات للموظفين", category: "job_descriptions", scope: false },
+
+  { code: "force_approve", name: "الاعتماد النهائي الاستثنائي", category: "approvals", scope: false },
 ];
 
 const CATEGORIES = {
@@ -172,6 +174,7 @@ const CATEGORIES = {
   settings: "الإعدادات",
   system: "إدارة النظام",
   job_descriptions: "الأوصاف الوظيفية",
+  approvals: "الاعتمادات الاستثنائية",
 };
 
 export default function RolesPermissions() {

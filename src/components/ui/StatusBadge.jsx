@@ -7,10 +7,11 @@ const statusStyles = {
   pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
   approved: "bg-green-100 text-green-700 border-green-200",
   rejected: "bg-red-100 text-red-700 border-red-200",
+  returned: "bg-orange-100 text-orange-700 border-orange-200",
   manager_approved: "bg-blue-100 text-blue-700 border-blue-200",
   gm_approved: "bg-indigo-100 text-indigo-700 border-indigo-200",
   hr_approved: "bg-green-100 text-green-700 border-green-200",
-  draft: "bg-gray-100 text-gray-600 border-gray-200",
+  draft: "bg-yellow-100 text-yellow-700 border-yellow-200",
   pending_review: "bg-yellow-100 text-yellow-700 border-yellow-200",
   paid: "bg-green-100 text-green-700 border-green-200",
   present: "bg-green-100 text-green-700 border-green-200",
@@ -18,12 +19,13 @@ const statusStyles = {
   leave: "bg-blue-100 text-blue-700 border-blue-200",
   holiday: "bg-purple-100 text-purple-700 border-purple-200",
   weekend: "bg-gray-100 text-gray-600 border-gray-200",
-  expired: "bg-red-100 text-red-700 border-red-200",
+  expired: "bg-orange-100 text-orange-700 border-orange-200",
   terminated: "bg-red-100 text-red-700 border-red-200",
   completed: "bg-green-100 text-green-700 border-green-200",
   in_progress: "bg-blue-100 text-blue-700 border-blue-200",
   enrolled: "bg-yellow-100 text-yellow-700 border-yellow-200",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  planned: "bg-blue-100 text-blue-700 border-blue-200",
 };
 
 const statusLabels = {
@@ -32,6 +34,7 @@ const statusLabels = {
   pending: "قيد الانتظار",
   approved: "معتمد",
   rejected: "مرفوض",
+  returned: "مُرجع للمراجعة",
   manager_approved: "موافقة المدير",
   gm_approved: "موافقة المدير العام",
   hr_approved: "معتمد من الموارد البشرية",
@@ -44,11 +47,12 @@ const statusLabels = {
   holiday: "عطلة رسمية",
   weekend: "نهاية الأسبوع",
   expired: "منتهي",
-  terminated: "منتهي",
+  terminated: "مفسوخ",
   completed: "مكتمل",
   in_progress: "قيد التنفيذ",
   enrolled: "مسجل",
   cancelled: "ملغي",
+  planned: "مستقبلي",
 };
 
 export default function StatusBadge({ status, customLabel = null, className = "" }) {

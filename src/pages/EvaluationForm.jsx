@@ -17,7 +17,7 @@ export default function EvaluationForm() {
   const [canApprove, setCanApprove] = useState(false);
   const urlParams = new URLSearchParams(window.location.search);
   const evaluationId = urlParams.get("id");
-  
+
   const [evaluation, setEvaluation] = useState(null);
   const [employee, setEmployee] = useState(null);
   const [template, setTemplate] = useState(null);
@@ -39,12 +39,12 @@ export default function EvaluationForm() {
     try {
       const user = await base44.auth.me();
       setCurrentUser(user);
-      
+
       // Check approval permissions
       const canApproveManager = await hasPermission(user, PERMISSIONS.APPROVE_EVALUATION_MANAGER);
       const canApproveGM = await hasPermission(user, PERMISSIONS.APPROVE_EVALUATION_GM);
       const canApproveHR = await hasPermission(user, PERMISSIONS.APPROVE_EVALUATION_HR);
-      
+
       setCanApprove(canApproveManager || canApproveGM || canApproveHR);
     } catch (error) {
       console.error("Error loading user:", error);
@@ -55,19 +55,19 @@ export default function EvaluationForm() {
     setLoading(true);
     try {
       const evalData = await base44.entities.PerformanceEvaluation.filter({ id: evaluationId }).then(r => r[0]);
-      
+
       // Map DB fields to Frontend State
       const signatures = evalData.signatures || {};
       setEvaluation({
-          ...evalData,
-          // Map DB columns to Frontend state variables
-          improvement_areas: evalData.areas_for_improvement,
-          development_actions: evalData.development_plan,
-          
-          // Flatten signatures for inputs
-          employee_signature_date: signatures.employee_signature_date,
-          evaluator_signature_date: signatures.evaluator_signature_date,
-          hr_signature_date: signatures.hr_signature_date
+        ...evalData,
+        // Map DB columns to Frontend state variables
+        improvement_areas: evalData.areas_for_improvement,
+        development_actions: evalData.development_plan,
+
+        // Flatten signatures for inputs
+        employee_signature_date: signatures.employee_signature_date,
+        evaluator_signature_date: signatures.evaluator_signature_date,
+        hr_signature_date: signatures.hr_signature_date
       });
 
       const [empData, tempData, comps, kpiData, compRatings, kpiRes] = await Promise.all([
@@ -155,12 +155,12 @@ export default function EvaluationForm() {
 
         // Ensure mandatory fields
         const payload = {
-            ...rating,
-            employee_id: evaluation.employee_id,
-            competency_id: compId,
-            evaluation_id: evaluationId,
-            evaluator_id: currentUser?.id,
-            evaluation_date: new Date().toISOString().split('T')[0]
+          ...rating,
+          employee_id: evaluation.employee_id,
+          competency_id: compId,
+          evaluation_id: evaluationId,
+          evaluator_id: currentUser?.id,
+          evaluation_date: new Date().toISOString().split('T')[0]
         };
 
         if (rating.id) {
@@ -176,12 +176,12 @@ export default function EvaluationForm() {
         // Find corresponding KPI template to get weight
         const templateKpi = kpis.find(k => k.id === kpiId);
         const weight = templateKpi ? templateKpi.weight : 0;
-        
+
         const payload = {
-            ...result,
-            weight: weight,
-            kpi_name: templateKpi ? templateKpi.name : '',
-            unit: templateKpi ? templateKpi.unit : ''
+          ...result,
+          weight: weight,
+          kpi_name: templateKpi ? templateKpi.name : '',
+          unit: templateKpi ? templateKpi.unit : ''
         };
 
         if (result.id) {
@@ -193,7 +193,7 @@ export default function EvaluationForm() {
 
       // Update evaluation with overall score
       const overallScore = calculateOverallScore();
-      
+
       await base44.entities.PerformanceEvaluation.update(evaluationId, {
         overall_score: overallScore,
         strengths: evaluation.strengths,
@@ -201,9 +201,9 @@ export default function EvaluationForm() {
         areas_for_improvement: evaluation.improvement_areas,
         development_plan: evaluation.development_actions,
         signatures: {
-            employee_signature_date: evaluation.employee_signature_date,
-            evaluator_signature_date: evaluation.evaluator_signature_date,
-            hr_signature_date: evaluation.hr_signature_date
+          employee_signature_date: evaluation.employee_signature_date,
+          evaluator_signature_date: evaluation.evaluator_signature_date,
+          hr_signature_date: evaluation.hr_signature_date
         }
       });
 
@@ -219,26 +219,12 @@ export default function EvaluationForm() {
   const submitForApproval = async () => {
     setSaving(true);
     try {
+      // 1. First save all data (ratings, kpis, etc.)
       await saveEvaluation();
-      
-      // Generate approval chain
-      const chainResponse = await base44.functions.invoke('getApprovalChain', {
-        employeeId: evaluation.employee_id,
-        entity: 'PerformanceEvaluation'
-      });
-      
-      const chain = chainResponse.data.approvalChain || [];
-      const firstLevel = chain.length > 0 ? chain[0].level : 'pending';
 
-      // Update status to pending manager approval
+      // 2. Update status to pending (This will trigger workflow generation on the backend)
       await base44.entities.PerformanceEvaluation.update(evaluationId, {
-        status: "pending",
-        approval_chain: chain,
-        current_approval_level: firstLevel,
-        current_level_idx: 0,
-        current_status_desc: chain.length > 0 
-            ? `جارى الاعتماد من: ${chain[0].level_name}` 
-            : 'قيد الانتظار'
+        status: "pending"
       });
 
       toast.success("تم رفع التقييم للاعتماد");
@@ -375,18 +361,36 @@ export default function EvaluationForm() {
             </div>
           </div>
 
+          {/* Approval Info Banner */}
+          {evaluation?.status !== 'draft' && evaluation?.status !== 'completed' && evaluation?.approval_steps?.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg mb-4">
+              <div className="flex items-center gap-2 text-amber-800">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-semibold">
+                  {(() => {
+                    const pendingStep = evaluation.approval_steps.find(s => s.status === 'pending');
+                    if (pendingStep) {
+                      const title = pendingStep.approver_job_title || pendingStep.role_name || `الخطوة ${pendingStep.step_order}`;
+                      return `جارى الاعتماد من: ${title}`;
+                    }
+                    return evaluation.current_status_desc || 'قيد المراجعة';
+                  })()}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Approval Timeline */}
-          {(evaluation?.approval_chain?.length > 0 || evaluation?.approval_history?.length > 0) && (
+          {evaluation?.approval_steps?.length > 0 && (
             <div className="border-t pt-4">
-              <ApprovalTimeline 
-                approvalChain={evaluation.approval_chain} 
-                approvalHistory={evaluation.approval_history} 
+              <ApprovalTimeline
+                approvalChain={evaluation.approval_steps}
               />
             </div>
           )}
 
           {/* Approval Actions */}
-          {canApprove && evaluation?.status !== 'draft' && evaluation?.status !== 'completed' && (
+          {evaluation?.status !== 'draft' && evaluation?.status !== 'completed' && (
             <div className="border-t pt-4">
               <ApprovalActions
                 entityName="PerformanceEvaluation"
@@ -418,16 +422,15 @@ export default function EvaluationForm() {
                 {[1, 2, 3, 4, 5].map((level) => {
                   const barsDesc = comp[`bars_level_${level}`];
                   const isSelected = competencyRatings[comp.id]?.rating === level;
-                  
+
                   return (
                     <button
                       key={level}
                       onClick={() => updateCompetencyRating(comp.id, level)}
-                      className={`p-3 border-2 rounded-lg text-right transition-all ${
-                        isSelected
-                          ? getLevelColor(level) + " border-current"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
+                      className={`p-3 border-2 rounded-lg text-right transition-all ${isSelected
+                        ? getLevelColor(level) + " border-current"
+                        : "border-gray-200 hover:border-gray-300"
+                        }`}
                     >
                       <div className="font-bold mb-1">({level})</div>
                       <div className="text-xs">{barsDesc}</div>

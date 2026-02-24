@@ -11,8 +11,7 @@ class LeavesController extends BaseController {
     protected $fillable = [
         'request_number', 'employee_id', 'leave_type_id',
         'start_date', 'end_date', 'days_count', 'reason', 'document_url',
-        'status', 'current_approval_level', 'approval_history', 'requires_finance_approval',
-        'approval_chain', 'current_level_idx', 'current_status_desc'
+        'status'
     ];
     
     protected $searchable = ['request_number'];
@@ -51,137 +50,175 @@ class LeavesController extends BaseController {
         
         return ['data' => array_map([$this, 'processRow'], $data)];
     }
+
+    protected function processRow($row) {
+        if (!$row) return null;
+        
+        // Fetch approval steps for this request (protected with try-catch)
+        try {
+            $stmt = $this->db->prepare("
+                SELECT s.id as step_id, s.approval_request_id, s.approver_user_id, s.role_id,
+                       s.step_order, s.status, s.comments, s.is_name_visible, s.action_date,
+                       s.created_at as step_created_at,
+                       r.name as role_name, u.full_name as approver_name,
+                       COALESCE(pos.name, emp.position) as approver_job_title,
+                       mgr_dept.id as mgr_dept_id,
+                       mgr_dept.parent_department_id as mgr_parent_dept_id
+                FROM approval_steps s
+                LEFT JOIN roles r ON s.role_id = r.id
+                LEFT JOIN users u ON s.approver_user_id = u.id
+                LEFT JOIN employees emp ON u.email = emp.email
+                LEFT JOIN positions pos ON emp.position = pos.id
+                LEFT JOIN departments mgr_dept ON mgr_dept.manager_id = emp.id
+                JOIN approval_requests req ON s.approval_request_id = req.id
+                WHERE req.model_type = :mtype AND req.model_id = :mid
+                ORDER BY s.step_order ASC
+            ");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            $steps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Mapping for Role Names to Arabic
+            $roleMapping = [
+                'hr_manager' => 'مدير قسم الموارد البشرية',
+                'finance_manager' => 'مدير الحسابات',
+                'manager' => 'مدير الشركة',
+                'admin' => 'مدير النظام'
+            ];
+
+            // Re-map step_id to id for frontend compatibility
+            $row['approval_steps'] = array_map(function($step) use ($roleMapping) {
+                $step['id'] = $step['step_id'];
+                unset($step['step_id']);
+                // If this approver manages the root department (no parent), label as "مدير الشركة"
+                // mgr_dept_id is NOT NULL only when the person IS actually a department manager
+                if (!empty($step['mgr_dept_id']) && $step['mgr_parent_dept_id'] === null) {
+                    $step['approver_job_title'] = 'مدير الشركة';
+                }
+
+                // Apply Arabic mapping for role names
+                if (isset($roleMapping[$step['role_name']])) {
+                    $step['role_name'] = $roleMapping[$step['role_name']];
+                    if (empty($step['approver_job_title'])) {
+                        $step['approver_job_title'] = $roleMapping[$step['role_name']];
+                    }
+                }
+
+                unset($step['mgr_dept_id'], $step['mgr_parent_dept_id']);
+                return $step;
+            }, $steps);
+        } catch (Exception $e) {
+            error_log('LeavesController processRow approval_steps error: ' . $e->getMessage());
+            $row['approval_steps'] = [];
+        }
+
+        // Get overall approval request status
+        try {
+            $stmt = $this->db->prepare("SELECT id, status FROM approval_requests WHERE model_type = :mtype AND model_id = :mid LIMIT 1");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            $req = $stmt->fetch();
+            if ($req) {
+                $row['workflow_id'] = $req['id'];
+                $row['workflow_status'] = $req['status'];
+            }
+        } catch (Exception $e) {
+            error_log('LeavesController processRow approval_requests error: ' . $e->getMessage());
+        }
+
+        return $row;
+    }
     
     /**
      * Auto-calculate days and generate request number
      */
     public function store($data) {
-        // Generate request number
-        if (empty($data['request_number'])) {
-            $data['request_number'] = $this->generateRequestNumber('LV');
+        try {
+            // Generate request number
+            if (empty($data['request_number'])) {
+                $data['request_number'] = $this->generateRequestNumber('LV');
+            }
+            
+            // Calculate days count
+            if (!empty($data['start_date']) && !empty($data['end_date'])) {
+                $start = new DateTime($data['start_date']);
+                $end = new DateTime($data['end_date']);
+                $diff = $start->diff($end);
+                $data['days_count'] = $diff->days + 1;
+            }
+            
+            $result = parent::store($data);
+
+            if (isset($result['id'])) {
+                // Generate Approval Flow (New Polymorphic System)
+                require_once __DIR__ . '/../services/WorkflowService.php';
+                $workflowService = new WorkflowService();
+                $workflowService->generateFlow($this->table, $result['id'], 'LeaveRequest');
+            }
+
+            return $result;
+        } catch (Exception $e) {
+            http_response_code(500);
+            return ['error' => true, 'message' => $e->getMessage()];
         }
-        
-        // Calculate days count
-        if (!empty($data['start_date']) && !empty($data['end_date'])) {
-            $start = new DateTime($data['start_date']);
-            $end = new DateTime($data['end_date']);
-            $diff = $start->diff($end);
-            $data['days_count'] = $diff->days + 1;
-        }
-        
-        return parent::store($data);
     }
-    
+
     /**
-     * Custom actions
+     * Handle custom actions (e.g., resubmit)
      */
     public function customAction($id, $action, $data = null) {
-        switch ($action) {
-            case 'approve':
-                return $this->approve($id, $data);
-            case 'reject':
-                return $this->reject($id, $data);
-            default:
-                parent::customAction($id, $action, $data);
+        if ($action === 'resubmit') {
+            return $this->handleResubmit($id);
         }
+        return parent::customAction($id, $action, $data);
     }
-    
-    private function approve($id, $data) {
-        require_once __DIR__ . '/../services/ApprovalService.php';
-        
-        // Mock User (In real app, fetch from session/auth)
-        $currentUser = [
-            'id' => $data['approver_id'] ?? 'admin',
-            'name' => $data['approver_name'] ?? 'System Admin',
-            'role' => 'admin' // Force Admin role for testing
-        ];
 
-        $service = new ApprovalService($this->db, $currentUser);
-        
-        // Check if Admin wants "Force Approve" (skip steps)
-        $forceFinal = isset($data['force_final']) && $data['force_final'] == true;
-        
-        $result = $service->process($this->table, $id, 'approve', $data['notes'] ?? null, $forceFinal);
+    /**
+     * Re-submit a returned request: delete old approval flow and generate new one
+     */
+    private function handleResubmit($id) {
+        try {
+            $this->db->beginTransaction();
 
-        if ($result['success']) {
-            // Update leave balance ONLY if fully approved
-            if ($result['new_status'] === 'approved') {
-                $leave = $this->show($id);
-                $this->updateLeaveBalance($leave['employee_id'], $leave['leave_type_id'], $leave['days_count']);
+            // 1. Delete old approval flow
+            $stmt = $this->db->prepare("SELECT id FROM approval_requests WHERE model_type = :mtype AND model_id = :mid");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $id]);
+            $oldRequest = $stmt->fetch();
+
+            if ($oldRequest) {
+                // Delete steps first (FK constraint)
+                $this->db->prepare("DELETE FROM approval_steps WHERE approval_request_id = :rid")
+                         ->execute([':rid' => $oldRequest['id']]);
+                // Delete the request
+                $this->db->prepare("DELETE FROM approval_requests WHERE id = :id")
+                         ->execute([':id' => $oldRequest['id']]);
             }
-            return $this->show($id);
-        } else {
-            return ['error' => true, 'message' => $result['error']];
-        }
-    }
-    
-    private function reject($id, $data) {
-        require_once __DIR__ . '/../services/ApprovalService.php';
-        
-        $currentUser = [
-            'id' => $data['approver_id'] ?? 'admin',
-            'name' => $data['approver_name'] ?? 'System Admin',
-            'role' => 'admin'
-        ];
 
-        $service = new ApprovalService($this->db, $currentUser);
-        $result = $service->process($this->table, $id, 'reject', $data['notes'] ?? null);
+            // 2. Update leave request status back to pending
+            $this->db->prepare("UPDATE {$this->table} SET status = 'pending' WHERE id = :id")
+                     ->execute([':id' => $id]);
 
-        if ($result['success']) {
-            return $this->show($id);
-        } else {
-            return ['error' => true, 'message' => $result['error']];
-        }
-    }
-    
-    private function updateLeaveBalance($employeeId, $leaveTypeId, $daysUsed) {
-        $year = date('Y');
-        
-        // Check if balance exists
-        $stmt = $this->db->prepare("
-            SELECT id, used_balance, remaining_balance FROM employee_leave_balances 
-            WHERE employee_id = :eid AND leave_type_id = :ltid AND year = :year
-        ");
-        $stmt->execute([':eid' => $employeeId, ':ltid' => $leaveTypeId, ':year' => $year]);
-        $balance = $stmt->fetch();
-        
-        if ($balance) {
-            $stmt = $this->db->prepare("
-                UPDATE employee_leave_balances 
-                SET used_balance = used_balance + :days,
-                    remaining_balance = remaining_balance - :days
-                WHERE id = :id
-            ");
-            $stmt->execute([':days' => $daysUsed, ':id' => $balance['id']]);
-        } else {
-            // Auto-create balance record if not exists
-            // First get default balance from leave type
-            $stmt = $this->db->prepare("SELECT default_balance FROM leave_types WHERE id = :id");
-            $stmt->execute([':id' => $leaveTypeId]);
-            $type = $stmt->fetch();
-            
-            $defaultBalance = $type ? $type['default_balance'] : 0;
-            
-            $this->db->prepare("
-                INSERT INTO employee_leave_balances 
-                (id, employee_id, leave_type_id, year, total_balance, used_balance, remaining_balance, created_at)
-                VALUES (UUID(), :eid, :ltid, :year, :total, :used, :remaining, NOW())
-            ")->execute([
-                ':eid' => $employeeId,
-                ':ltid' => $leaveTypeId,
-                ':year' => $year,
-                ':total' => $defaultBalance,
-                ':used' => $daysUsed,
-                ':remaining' => $defaultBalance - $daysUsed
-            ]);
+            // 3. Generate new approval flow
+            require_once __DIR__ . '/../services/WorkflowService.php';
+            $workflowService = new WorkflowService();
+            $workflowService->generateFlow($this->table, $id, 'LeaveRequest');
+
+            $this->db->commit();
+            return ['status' => 'success', 'message' => 'تم إعادة تقديم الطلب بنجاح'];
+        } catch (Exception $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            http_response_code(500);
+            return ['error' => true, 'message' => $e->getMessage()];
         }
     }
     
     private function generateRequestNumber($prefix) {
-        $year = date('Y');
-        $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM {$this->table} WHERE YEAR(created_at) = :year");
-        $stmt->execute([':year' => $year]);
-        $count = $stmt->fetch()['count'] + 1;
-        return $prefix . '-' . $year . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
+        try {
+            $year = date('Y');
+            $stmt = $this->db->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(request_number, '-', -1) AS UNSIGNED)) as max_count FROM `{$this->table}` WHERE YEAR(created_at) = :year");
+            $stmt->execute([':year' => $year]);
+            $row = $stmt->fetch();
+            $count = ($row && $row['max_count']) ? $row['max_count'] + 1 : 1;
+            return $prefix . '-' . $year . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
+        } catch (Exception $e) {
+            return $prefix . '-' . date('Y') . '-' . rand(10000, 99999);
+        }
     }
 }

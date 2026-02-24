@@ -115,9 +115,43 @@ class ApprovalsController extends BaseController {
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch();
+        } elseif ($modelType === 'leave_requests') {
+            $sql = "SELECT lr.*, e.full_name as employee_name, lt.name as leave_type_name
+                    FROM leave_requests lr
+                    LEFT JOIN employees e ON lr.employee_id = e.id
+                    LEFT JOIN leave_types lt ON lr.leave_type_id = lt.id
+                    WHERE lr.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
+        } elseif ($modelType === 'overtime') {
+            $sql = "SELECT ot.*, e.full_name as employee_name
+                    FROM overtime ot
+                    LEFT JOIN employees e ON ot.employee_id = e.id
+                    WHERE ot.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
+        } elseif ($modelType === 'bonuses') {
+            $sql = "SELECT b.*, e.full_name as employee_name
+                    FROM bonuses b
+                    LEFT JOIN employees e ON b.employee_id = e.id
+                    WHERE b.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
+        } elseif ($modelType === 'employee_trainings') {
+            $sql = "SELECT et.*, e.full_name as employee_name, t.name as training_name
+                    FROM employee_trainings et
+                    LEFT JOIN employees e ON et.employee_id = e.id
+                    LEFT JOIN trainings t ON et.training_id = t.id
+                    WHERE et.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
         }
         
-        // يمكن إضافة أنواع أخرى لاحقاً (إجازات، رواتب، إلخ)
+        // يمكن إضافة أنواع أخرى لاحقاً (رواتب، إلخ)
         try {
             $stmt = $this->db->prepare("SELECT * FROM `$modelType` WHERE id = :id");
             $stmt->execute([':id' => $modelId]);

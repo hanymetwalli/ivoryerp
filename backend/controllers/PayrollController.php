@@ -99,6 +99,25 @@ class PayrollController extends BaseController {
         $monthEnd = date('Y-m-t', strtotime($monthStart));
         $daysInMonth = 30; // الحساب التجاري المعتاد 30 يوم
 
+        // معالجة الموظفين المستقيلين/المنهية خدمتهم في هذا الشهر
+        $terminationAbsence = 0;
+        if ($employee['status'] === 'terminated' && !empty($employee['termination_date'])) {
+            $tDate = strtotime($employee['termination_date']);
+            $mStart = strtotime($monthStart);
+            $mEnd = strtotime($monthEnd);
+            
+            if ($tDate < $mStart) {
+                throw new Exception('الموظف تم إنهاء خدمته قبل بداية هذا الشهر');
+            }
+            
+            if ($tDate < $mEnd) {
+                // الموظف انتهت خدمته خلال الشهر
+                $dayOfTermination = (int)date('d', $tDate);
+                // الأيام التي تلي تاريخ الإنهاء تُحسب كغياب (لخصمها من الـ 30 يوم)
+                $terminationAbsence = max(0, 30 - $dayOfTermination);
+            }
+        }
+
         // 3. جلب الإجازات المعتمدة خلال الشهر
         $stmt = $this->db->prepare("
             SELECT lr.*, lt.is_paid 
@@ -217,7 +236,7 @@ class PayrollController extends BaseController {
         $dailyRate = $basic / 30;
         $minuteRate = ($basic / 30 / 8) / 60;
 
-        $absDed = ($absentDays + $unpaidLeaveDays) * $dailyRate;
+        $absDed = ($absentDays + $unpaidLeaveDays + $terminationAbsence) * $dailyRate;
         $lateDed = $lateMinutes * $minuteRate;
         
         $insBase = min($basic, $insMax);
@@ -252,12 +271,13 @@ class PayrollController extends BaseController {
             'net_salary' => round($net, 2),
             'currency' => $contract['currency'] ?? 'SAR',
             'status' => 'draft',
-            'working_days' => 30 - ($absentDays + $unpaidLeaveDays),
-            'absent_days' => $absentDays + $unpaidLeaveDays,
+            'working_days' => 30 - ($absentDays + $unpaidLeaveDays + $terminationAbsence),
+            'absent_days' => $absentDays + $unpaidLeaveDays + $terminationAbsence,
             'late_minutes' => $lateMinutes,
             'overtime_hours' => round($overtimeHours, 2),
             'notes' => ($unpaidLeaveDays > 0 ? "خصم $unpaidLeaveDays يوم إجازة بدون راتب. " : "") . 
-                       ($absentDays > 0 ? "خصم $absentDays يوم غياب. " : "")
+                       ($absentDays > 0 ? "خصم $absentDays يوم غياب. " : "") .
+                       ($terminationAbsence > 0 ? "تعديل راتب لنهاية الخدمة في " . $employee['termination_date'] . ". " : "")
         ];
 
         return $this->store($payrollData);
@@ -267,8 +287,13 @@ class PayrollController extends BaseController {
         $month = $data['month'] ?? date('n');
         $year = $data['year'] ?? date('Y');
         
-        $stmt = $this->db->prepare("SELECT id FROM employees WHERE status = 'active'");
-        $stmt->execute();
+        $monthStart = sprintf('%04d-%02d-01', $year, $month);
+        $stmt = $this->db->prepare("
+            SELECT id FROM employees 
+            WHERE status = 'active'
+               OR (status = 'terminated' AND (termination_date IS NULL OR termination_date >= :mstart))
+        ");
+        $stmt->execute([':mstart' => $monthStart]);
         $employees = $stmt->fetchAll();
         
         $success = 0; $errors = [];

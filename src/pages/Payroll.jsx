@@ -69,13 +69,13 @@ export default function Payroll() {
   const [filteredPayrolls, setFilteredPayrolls] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
 
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     userEmployee,
-    hasPermission, 
+    hasPermission,
     filterEmployees,
     filterEmployeeRelatedData,
-    loading: authLoading 
+    loading: authLoading
   } = useAuth();
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function Payroll() {
 
   const loadData = async () => {
     if (authLoading) return;
-    
+
     setLoading(true);
     try {
       const [
@@ -198,13 +198,13 @@ export default function Payroll() {
       if (successCount > 0) {
         toast.success(`تم حساب رواتب ${successCount} موظف بنجاح${errorCount > 0 ? ` (${errorCount} فشل)` : ''}`);
       }
-      
+
       if (errorCount > 0 && errors.length <= 5) {
         errors.forEach(err => toast.error(err, { duration: 5000 }));
       } else if (errorCount > 5) {
         toast.error(`فشل حساب ${errorCount} رواتب. يرجى مراجعة بيانات الموظفين.`);
       }
-      
+
       loadData();
       setShowCalculateModal(false);
     } catch (error) {
@@ -233,7 +233,7 @@ export default function Payroll() {
   const confirmDelete = async () => {
     try {
       const empName = getEmployeeName(selectedPayroll.employee_id);
-      
+
       // ✅ تسجيل في Audit Log
       await base44.functions.invoke('logAuditEvent', {
         action: 'delete',
@@ -250,15 +250,15 @@ export default function Payroll() {
         },
         severity: 'critical',
       });
-      
+
       await base44.entities.Payroll.delete(selectedPayroll.id);
-      
+
       // تحديث القوائم المحلية فوراً
       const updatedPayrolls = payrolls.filter((p) => p.id !== selectedPayroll.id);
       const updatedFiltered = filteredPayrolls.filter((p) => p.id !== selectedPayroll.id);
       setPayrolls(updatedPayrolls);
       setFilteredPayrolls(updatedFiltered);
-      
+
       setShowDeleteDialog(false);
       toast.success("تم حذف الراتب بنجاح");
     } catch (error) {
@@ -319,6 +319,7 @@ export default function Payroll() {
         بدل المواصلات: ${formatCurrency(payroll.transport_allowance, payroll.currency)}
         بدلات أخرى: ${formatCurrency(payroll.other_allowances, payroll.currency)}
         علاوات إضافية: ${formatCurrency(payroll.additional_allowances, payroll.currency)}
+        المكافآت: ${formatCurrency(payroll.bonuses_amount, payroll.currency)}
         الساعات الإضافية: ${formatCurrency(payroll.overtime_amount, payroll.currency)}
         ـــــــــــــــــــــــــــــــــــــ
         إجمالي الراتب: ${formatCurrency(payroll.gross_salary, payroll.currency)}
@@ -668,6 +669,12 @@ export default function Payroll() {
                     <span className="text-gray-600">علاوات إضافية</span>
                     <span className="font-medium">
                       {formatCurrency(selectedPayroll.additional_allowances, selectedPayroll.currency)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">المكافآت</span>
+                    <span className="font-medium">
+                      {formatCurrency(selectedPayroll.bonuses_amount, selectedPayroll.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between">

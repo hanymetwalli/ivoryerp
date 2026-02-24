@@ -119,6 +119,10 @@ $entities = [
     'development-logs' => 'DevelopmentLogsController',
     'insurance-settings' => 'InsuranceSettingsController',
     'permission-requests' => 'PermissionsController',
+    'workflow-settings' => 'WorkflowSettingsController',
+    'approvals' => 'ApprovalsController',
+    'workflow' => 'WorkflowController', // Placeholder to pass the whitelist
+    'functions' => 'FunctionsController', // Placeholder to pass the whitelist
 ];
 
 if (!$entity) {
@@ -140,6 +144,11 @@ require_once __DIR__ . '/../controllers/LookupControllers.php';
 $controllerFile = __DIR__ . '/../controllers/' . $controllerName . '.php';
 if (file_exists($controllerFile)) {
     require_once $controllerFile;
+}
+
+// Explicitly load WorkflowController as it might be used via generic routing
+if ($controllerName === 'WorkflowController') {
+    require_once __DIR__ . '/../controllers/WorkflowController.php';
 }
 
 if (!class_exists($controllerName)) {
@@ -182,7 +191,9 @@ try {
             'resignation' => 'ResignationsController',
             'performance_evaluations' => 'EvaluationsController',
             'performanceevaluation' => 'EvaluationsController',
-            'evaluations' => 'EvaluationsController'
+            'evaluations' => 'EvaluationsController',
+            'contracts' => 'ContractsController',
+            'contractrequest' => 'ContractsController'
         ];
 
         $targetController = $tableToController[$table] ?? null;

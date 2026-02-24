@@ -19,11 +19,6 @@ class PermissionsController extends BaseController {
         'end_time', 
         'duration_minutes', 
         'status', 
-        'approval_chain',
-        'current_level_idx',
-        'current_status_desc',
-        'rejection_reason',
-        'current_stage_role_id',
         'reason' 
     ];
 
@@ -187,26 +182,15 @@ class PermissionsController extends BaseController {
                 ];
             }
 
-            // 4. تجهيز بيانات الدور (Manager Role ID)
-            $roleStmt = $this->db->prepare("SELECT id FROM roles WHERE name = 'manager' LIMIT 1");
-            $roleStmt->execute();
-            $managerRole = $roleStmt->fetch();
-            $managerRoleId = $managerRole ? $managerRole['id'] : null;
+            // 4. Request Number Generation
+            $year = date('Y');
+            $stmt = $this->db->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(request_number, '-', -1) AS UNSIGNED)) as max_count FROM `{$this->table}` WHERE YEAR(created_at) = :year");
+            $stmt->execute([':year' => $year]);
+            $row = $stmt->fetch();
+            $count = ($row && $row['max_count']) ? $row['max_count'] + 1 : 1;
+            $requestNumber = 'PR-' . $year . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
 
-            if (!$managerRoleId) {
-                 $roleStmt = $this->db->prepare("SELECT id FROM roles WHERE name = 'admin' LIMIT 1");
-                 $roleStmt->execute();
-                 $adminRole = $roleStmt->fetch();
-                 $managerRoleId = $adminRole ? $adminRole['id'] : 1; 
-            }
-
-            // 6. Request Number Generation
-            $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM `permission_requests` WHERE YEAR(created_at) = YEAR(CURDATE())");
-            $stmt->execute();
-            $count = $stmt->fetch()['count'] + 1;
-            $requestNumber = 'PR-' . date('Y') . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
-
-            // 7. Prepare Data for Save
+            // 5. Prepare Data for Save
             $dataToStore = [
                 'user_id' => $userId,
                 'employee_id' => $employeeId,
@@ -217,7 +201,6 @@ class PermissionsController extends BaseController {
                 'duration_minutes' => $newDuration,
                 'reason' => $requestData['reason'] ?? null,
                 'status' => 'pending',
-                'current_stage_role_id' => $managerRoleId, 
             ];
 
             $storedRequest = parent::store($dataToStore);
@@ -313,55 +296,125 @@ class PermissionsController extends BaseController {
     }
 
     /**
-     * Custom Actions (Approve/Reject)
+     * Handle custom actions (e.g., resubmit)
      */
     public function customAction($id, $action, $data = null) {
-        $data = $data ?: json_decode(file_get_contents('php://input'), true);
-        
-        switch ($action) {
-            case 'approve':
-                return $this->approve($id, $data);
-            case 'reject':
-                return $this->reject($id, $data);
-            default:
-                return parent::customAction($id, $action, $data);
+        if ($action === 'resubmit') {
+            return $this->handleResubmit($id);
+        }
+        return parent::customAction($id, $action, $data);
+    }
+
+    /**
+     * Re-submit a returned request: delete old approval flow and generate new one
+     */
+    private function handleResubmit($id) {
+        try {
+            $this->db->beginTransaction();
+
+            // 1. Delete old approval flow
+            $stmt = $this->db->prepare("SELECT id FROM approval_requests WHERE model_type = :mtype AND model_id = :mid");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $id]);
+            $oldRequest = $stmt->fetch();
+
+            if ($oldRequest) {
+                $this->db->prepare("DELETE FROM approval_steps WHERE approval_request_id = :rid")
+                         ->execute([':rid' => $oldRequest['id']]);
+                $this->db->prepare("DELETE FROM approval_requests WHERE id = :id")
+                         ->execute([':id' => $oldRequest['id']]);
+            }
+
+            // 2. Update permission request status back to pending
+            $this->db->prepare("UPDATE {$this->table} SET status = 'pending' WHERE id = :id")
+                     ->execute([':id' => $id]);
+
+            // 3. Generate new approval flow
+            $workflowService = new WorkflowService();
+            $workflowService->generateFlow($this->table, $id, 'PermissionRequest');
+
+            $this->db->commit();
+            return ['status' => 'success', 'message' => 'تم إعادة تقديم الطلب بنجاح'];
+        } catch (Exception $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            http_response_code(500);
+            return ['error' => true, 'message' => $e->getMessage()];
         }
     }
 
-    private function approve($id, $data) {
-        // Use authenticated user in real scenario
-        $currentUser = [
-            'id' => $data['approver_id'] ?? 'admin',
-            'name' => $data['approver_name'] ?? 'System Admin',
-            'role' => 'admin' 
-        ];
-
-        $service = new ApprovalService($this->db, $currentUser);
-        $forceFinal = isset($data['force_final']) && $data['force_final'] == true;
+    /**
+     * Process each row to include dynamic approval steps
+     */
+    protected function processRow($row) {
+        $row = parent::processRow($row);
         
-        $result = $service->process($this->table, $id, 'approve', $data['notes'] ?? null, $forceFinal);
+        // Fetch approval steps for this request (protected with try-catch)
+        try {
+            $stmt = $this->db->prepare("
+                SELECT s.id as step_id, s.approval_request_id, s.approver_user_id, s.role_id,
+                       s.step_order, s.status, s.comments, s.is_name_visible, s.action_date,
+                       s.created_at as step_created_at,
+                       r.name as role_name, u.full_name as approver_name,
+                       COALESCE(pos.name, emp.position) as approver_job_title,
+                       mgr_dept.id as mgr_dept_id,
+                       mgr_dept.parent_department_id as mgr_parent_dept_id
+                FROM approval_steps s
+                LEFT JOIN roles r ON s.role_id = r.id
+                LEFT JOIN users u ON s.approver_user_id = u.id
+                LEFT JOIN employees emp ON u.email = emp.email
+                LEFT JOIN positions pos ON emp.position = pos.id
+                LEFT JOIN departments mgr_dept ON mgr_dept.manager_id = emp.id
+                JOIN approval_requests req ON s.approval_request_id = req.id
+                WHERE req.model_type = :mtype AND req.model_id = :mid
+                ORDER BY s.step_order ASC
+            ");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            $steps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Mapping for Role Names to Arabic
+            $roleMapping = [
+                'hr_manager' => 'مدير قسم الموارد البشرية',
+                'finance_manager' => 'مدير الحسابات',
+                'manager' => 'مدير الشركة',
+                'admin' => 'مدير النظام'
+            ];
 
-        if ($result['success']) {
-            return $this->show($id);
-        } else {
-            return ['error' => true, 'message' => $result['error']];
+            // Re-map step_id to id for frontend compatibility
+            $row['approval_steps'] = array_map(function($step) use ($roleMapping) {
+                $step['id'] = $step['step_id'];
+                unset($step['step_id']);
+                // If this approver manages the root department (no parent), label as "مدير الشركة"
+                if (!empty($step['mgr_dept_id']) && $step['mgr_parent_dept_id'] === null) {
+                    $step['approver_job_title'] = 'مدير الشركة';
+                }
+
+                // Apply Arabic mapping for role names
+                if (isset($roleMapping[$step['role_name']])) {
+                    $step['role_name'] = $roleMapping[$step['role_name']];
+                    if (empty($step['approver_job_title'])) {
+                        $step['approver_job_title'] = $roleMapping[$step['role_name']];
+                    }
+                }
+
+                unset($step['mgr_dept_id'], $step['mgr_parent_dept_id']);
+                return $step;
+            }, $steps);
+        } catch (Exception $e) {
+            error_log('PermissionsController processRow approval_steps error: ' . $e->getMessage());
+            $row['approval_steps'] = [];
         }
-    }
-    
-    private function reject($id, $data) {
-        $currentUser = [
-            'id' => $data['approver_id'] ?? 'admin',
-            'name' => $data['approver_name'] ?? 'System Admin',
-            'role' => 'admin'
-        ];
 
-        $service = new ApprovalService($this->db, $currentUser);
-        $result = $service->process($this->table, $id, 'reject', $data['notes'] ?? null);
-
-        if ($result['success']) {
-            return $this->show($id);
-        } else {
-            return ['error' => true, 'message' => $result['error']];
+        // Get overall approval request status
+        try {
+            $stmt = $this->db->prepare("SELECT id, status FROM approval_requests WHERE model_type = :mtype AND model_id = :mid LIMIT 1");
+            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            $req = $stmt->fetch();
+            if ($req) {
+                $row['workflow_id'] = $req['id'];
+                $row['workflow_status'] = $req['status'];
+            }
+        } catch (Exception $e) {
+            error_log('PermissionsController processRow approval_requests error: ' . $e->getMessage());
         }
+        
+        return $row;
     }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { base44 } from "@/api/ivoryClient";
 import {
   Clock,
   Plus,
@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Upload,
   DollarSign,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,21 +25,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatCard from "@/components/ui/StatCard";
-import ApprovalTimeline from "@/components/ApprovalTimeline";
-import ApprovalActions from "@/components/ApprovalActions";
+import ApprovalTimeline, { getCurrentPendingStep } from "@/components/ApprovalTimeline";
 import { format, parseISO } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
-import { PERMISSIONS } from "@/components/permissions";
 import { useAuth } from "@/components/AuthProvider";
+import { PERMISSIONS } from "@/components/permissions";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Overtime() {
   const [overtimes, setOvertimes] = useState([]);
@@ -53,18 +54,24 @@ export default function Overtime() {
   const [formData, setFormData] = useState({});
   const [saving, setSaving] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
-  const [approvalChain, setApprovalChain] = useState([]);
   const [filteredOvertimes, setFilteredOvertimes] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [approvalProcessing, setApprovalProcessing] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [showApprovalForm, setShowApprovalForm] = useState(null);
+  const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
+  const [forceApproveLoading, setForceApproveLoading] = useState(false);
 
-  const { 
-    currentUser, 
+  const {
+    currentUser,
     userEmployee,
-    hasPermission, 
+    hasPermission,
     filterEmployees,
     filterEmployeeRelatedData,
-    loading: authLoading 
+    loading: authLoading,
   } = useAuth();
+
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!authLoading) {
@@ -74,7 +81,7 @@ export default function Overtime() {
 
   const loadData = async () => {
     if (authLoading) return;
-    
+
     setLoading(true);
     try {
       const [overtimeData, empData, contractData] = await Promise.all([
@@ -99,16 +106,16 @@ export default function Overtime() {
   };
 
   const getEmployeeContract = (employeeId) => {
-    return contracts.find(c => c.employee_id === employeeId && c.status === 'active');
+    return contracts.find((c) => c.employee_id === employeeId && c.status === "active");
   };
 
   const calculateOvertimeRate = (employeeId) => {
     const contract = getEmployeeContract(employeeId);
     if (!contract || !contract.basic_salary) return { hourlyRate: 0, overtimeRate: 0 };
-    
+
     const hourlyRate = contract.basic_salary / 30 / 8;
     const overtimeRate = hourlyRate * 1.5;
-    
+
     return { hourlyRate, overtimeRate };
   };
 
@@ -128,38 +135,44 @@ export default function Overtime() {
 
   const handleEdit = (overtime) => {
     setSelectedOvertime(overtime);
+    setSelectedEmployees([overtime.employee_id]);
     setFormData(overtime);
     setShowForm(true);
   };
 
-  const handleView = async (overtime) => {
+  const handleView = (overtime) => {
     setSelectedOvertime(overtime);
-    
-    // Use saved chain if available (New System)
-    if (overtime.approval_chain && overtime.approval_chain.length > 0) {
-        setApprovalChain(overtime.approval_chain);
-        setShowViewModal(true);
-        return;
-    }
-
-    // جلب سلسلة الاعتماد
-    try {
-      const response = await base44.functions.invoke('getApprovalChain', {
-        employeeId: overtime.employee_id,
-        entity: 'Overtime',
-        requiresFinanceApproval: overtime.requires_finance_approval !== false,
-      });
-      setApprovalChain(response.data.approvalChain || []);
-    } catch (error) {
-      console.error('Error loading approval chain:', error);
-    }
-    
+    setApprovalNotes("");
+    setShowApprovalForm(null);
     setShowViewModal(true);
   };
 
   const handleDelete = (overtime) => {
     setSelectedOvertime(overtime);
     setShowDeleteDialog(true);
+  };
+
+  const handleForceApprove = async () => {
+    if (!selectedOvertime || !selectedOvertime.workflow_id) {
+      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
+      return;
+    }
+
+    setForceApproveLoading(true);
+    try {
+      await base44.entities.Workflow.customAction(selectedOvertime.workflow_id, 'force-approve', {
+        user_id: currentUser.id
+      });
+
+      toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
+      setShowForceApproveDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["overtime"] });
+      loadData();
+    } catch (error) {
+      console.error("Force approve error:", error);
+      toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
+    }
+    setForceApproveLoading(false);
   };
 
   const confirmDelete = async () => {
@@ -182,53 +195,48 @@ export default function Overtime() {
 
     setSaving(true);
     try {
-      // إنشاء سجل منفصل لكل موظف
-      for (const empId of selectedEmployees) {
-        const { hourlyRate, overtimeRate } = calculateOvertimeRate(empId);
+      if (selectedOvertime) {
+        // تحديث طلب موجود
+        const { hourlyRate, overtimeRate } = calculateOvertimeRate(selectedOvertime.employee_id);
         const totalAmount = overtimeRate * Number(formData.hours);
 
-        // توليد رقم طلب تلقائي
-        const requestNumberResponse = await base44.functions.invoke('generateRequestNumber', {
-          entityName: 'Overtime',
-          prefix: 'OT',
-        });
-
-        const dataToSave = {
-          request_number: requestNumberResponse.data.requestNumber,
-          employee_id: empId,
+        await base44.entities.Overtime.update(selectedOvertime.id, {
           date: formData.date,
           hours: Number(formData.hours),
           hourly_rate: hourlyRate,
           overtime_rate: overtimeRate,
           total_amount: totalAmount,
           notes: formData.notes || "",
-          status: "pending",
-          requires_finance_approval: true,
-        };
-
-        // جلب سلسلة الاعتماد
-        const chainResponse = await base44.functions.invoke('getApprovalChain', {
-          employeeId: empId,
-          entity: 'Overtime',
-          requiresFinanceApproval: true,
         });
-        
-        const chain = chainResponse.data.approvalChain || [];
-        if (chain.length > 0) {
-          dataToSave.current_approval_level = chain[0].level;
-          dataToSave.current_level_idx = 0;
-          dataToSave.approval_chain = chain;
-          
-          // تحديث وصف الحالة الأولية
-          const firstStep = chain[0];
-          dataToSave.current_status_desc = `جارى الاعتماد من: ${firstStep.level_name}` + 
-            (firstStep.approver_name ? ` (${firstStep.approver_name})` : "");
+
+        // إعادة تقديم إذا كان مرتجعاً
+        if (selectedOvertime.status === "returned" || selectedOvertime.workflow_status === "returned") {
+          await base44.entities.Overtime.action(selectedOvertime.id, "resubmit");
+          toast.success("تم تعديل وإعادة تقديم الطلب بنجاح");
+        } else {
+          toast.success("تم تحديث الطلب بنجاح");
+        }
+      } else {
+        // إنشاء سجلات جديدة لكل موظف
+        for (const empId of selectedEmployees) {
+          const { hourlyRate, overtimeRate } = calculateOvertimeRate(empId);
+          const totalAmount = overtimeRate * Number(formData.hours);
+
+          await base44.entities.Overtime.create({
+            employee_id: empId,
+            date: formData.date,
+            hours: Number(formData.hours),
+            hourly_rate: hourlyRate,
+            overtime_rate: overtimeRate,
+            total_amount: totalAmount,
+            notes: formData.notes || "",
+            status: "pending",
+          });
         }
 
-        await base44.entities.Overtime.create(dataToSave);
+        toast.success(`تم إضافة ${selectedEmployees.length} سجل ساعات إضافية بنجاح`);
       }
 
-      toast.success(`تم إضافة ${selectedEmployees.length} سجل ساعات إضافية بنجاح`);
       loadData();
       setShowForm(false);
       setSelectedEmployees([]);
@@ -239,11 +247,34 @@ export default function Overtime() {
     setSaving(false);
   };
 
+  // ===== إجراءات الاعتماد المباشرة =====
+  const handleApprovalAction = async (action) => {
+    if (!pendingStep?.id) return;
+    setApprovalProcessing(true);
+    try {
+      // processAction expects step_id and past-tense action (approved/rejected/returned)
+      const actionMap = { approve: "approved", reject: "rejected", return: "returned" };
+      await base44.entities.Approvals.action(pendingStep.id, "submit", {
+        action: actionMap[action] || action,
+        comments: approvalNotes,
+        user_id: currentUser?.id,
+      });
+      toast.success(action === "approve" ? "تم الاعتماد بنجاح" : action === "return" ? "تم إرجاع الطلب" : "تم الرفض");
+      setShowViewModal(false);
+      loadData();
+    } catch (error) {
+      console.error("Approval action error:", error);
+      toast.error("حدث خطأ أثناء تنفيذ الإجراء");
+    }
+    setApprovalProcessing(false);
+  };
+
+
   const handleImport = async (file) => {
     setSaving(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      
+
       const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
         file_url,
         json_schema: {
@@ -257,26 +288,21 @@ export default function Overtime() {
                   employee_name: { type: "string" },
                   date: { type: "string" },
                   hours: { type: "number" },
-                  notes: { type: "string" }
-                }
-              }
-            }
-          }
-        }
+                  notes: { type: "string" },
+                },
+              },
+            },
+          },
+        },
       });
 
       if (result.status === "success" && result.output?.data) {
         for (const row of result.output.data) {
-          const emp = employees.find(e => e.full_name === row.employee_name);
+          const emp = employees.find((e) => e.full_name === row.employee_name);
           if (emp) {
             const { hourlyRate, overtimeRate } = calculateOvertimeRate(emp.id);
-            const requestNumberResponse = await base44.functions.invoke('generateRequestNumber', {
-              entityName: 'Overtime',
-              prefix: 'OT',
-            });
 
             await base44.entities.Overtime.create({
-              request_number: requestNumberResponse.data.requestNumber,
               employee_id: emp.id,
               date: row.date,
               hours: row.hours,
@@ -285,7 +311,6 @@ export default function Overtime() {
               total_amount: overtimeRate * row.hours,
               notes: row.notes || "",
               status: "pending",
-              requires_finance_approval: true,
             });
           }
         }
@@ -311,7 +336,7 @@ export default function Overtime() {
       ot.total_amount || 0,
       ot.status || "",
     ]);
-    const csvContent = [headers, ...rows].map(row => row.join(",")).join("\n");
+    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -323,9 +348,9 @@ export default function Overtime() {
 
   const stats = {
     total: overtimes.length,
-    pending: overtimes.filter(o => o.status === "pending").length,
-    approved: overtimes.filter(o => o.status === "approved").length,
-    totalAmount: overtimes.filter(o => o.status === "approved").reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    pending: overtimes.filter((o) => o.status === "pending").length,
+    approved: overtimes.filter((o) => o.status === "approved").length,
+    totalAmount: overtimes.filter((o) => o.status === "approved").reduce((sum, o) => sum + (o.total_amount || 0), 0),
   };
 
   const columns = [
@@ -351,7 +376,8 @@ export default function Overtime() {
     {
       header: "المبلغ",
       accessor: "total_amount",
-      cell: (row) => `${row.total_amount?.toLocaleString('ar-SA', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || 0} ر.س`,
+      cell: (row) =>
+        `${row.total_amount?.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || 0} ر.س`,
     },
     {
       header: "الحالة",
@@ -362,8 +388,13 @@ export default function Overtime() {
       header: "الإجراءات",
       accessor: "actions",
       cell: (row) => {
-        const canEdit = hasPermission(PERMISSIONS.EDIT_OVERTIME);
-        const canDelete = hasPermission(PERMISSIONS.DELETE_OVERTIME);
+        const canEditRow = hasPermission(PERMISSIONS.EDIT_OVERTIME);
+        const canDeleteRow = hasPermission(PERMISSIONS.DELETE_OVERTIME);
+        const isOwner = row.employee_id === currentUser?.employee_id;
+        const isPending = row.status === "pending";
+        const isReturned = row.status === "returned";
+        const allowEdit = canEditRow || (isOwner && (isPending || isReturned));
+        const allowDelete = canDeleteRow || (isOwner && isPending);
 
         return (
           <DropdownMenu>
@@ -375,19 +406,34 @@ export default function Overtime() {
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={() => handleView(row)}>
                 <Eye className="w-4 h-4 ml-2" />
-                عرض
+                عرض التفاصيل
               </DropdownMenuItem>
-              {canEdit && (
+              {allowEdit && (isPending || isReturned) && (
                 <DropdownMenuItem onClick={() => handleEdit(row)}>
                   <Edit className="w-4 h-4 ml-2" />
-                  تعديل
+                  {isReturned ? "تعديل وإعادة تقديم" : "تعديل"}
                 </DropdownMenuItem>
               )}
-              {canDelete && (
+              {allowDelete && isPending && (
                 <DropdownMenuItem onClick={() => handleDelete(row)} className="text-red-600">
                   <Trash2 className="w-4 h-4 ml-2" />
                   حذف
                 </DropdownMenuItem>
+              )}
+              {hasPermission(PERMISSIONS.FORCE_APPROVE) && (row.status === 'pending' || row.workflow_status === 'pending') && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedOvertime(row);
+                      setShowForceApproveDialog(true);
+                    }}
+                    className="text-blue-600 font-bold"
+                  >
+                    <CheckCircle className="w-4 h-4 ml-2" />
+                    الاعتماد النهائي ⚡
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -397,18 +443,20 @@ export default function Overtime() {
   ];
 
   const toggleEmployee = (empId) => {
-    setSelectedEmployees(prev =>
-      prev.includes(empId) ? prev.filter(id => id !== empId) : [...prev, empId]
-    );
+    setSelectedEmployees((prev) => (prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]));
   };
 
   const toggleAll = () => {
-    if (selectedEmployees.length === filteredEmployees.filter(e => e.status === 'active').length) {
+    if (selectedEmployees.length === filteredEmployees.filter((e) => e.status === "active").length) {
       setSelectedEmployees([]);
     } else {
-      setSelectedEmployees(filteredEmployees.filter(e => e.status === 'active').map(e => e.id));
+      setSelectedEmployees(filteredEmployees.filter((e) => e.status === "active").map((e) => e.id));
     }
   };
+
+  // ===== حساب بيانات المعتمد الحالي =====
+  const pendingStep = selectedOvertime?.approval_steps ? getCurrentPendingStep(selectedOvertime.approval_steps) : null;
+  const isCurrentApprover = pendingStep && pendingStep.approver_user_id === currentUser?.id;
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -433,11 +481,11 @@ export default function Overtime() {
         <StatCard title="إجمالي السجلات" value={stats.total} icon={Clock} color="primary" />
         <StatCard title="قيد الانتظار" value={stats.pending} icon={Clock} color="orange" />
         <StatCard title="معتمدة" value={stats.approved} icon={CheckCircle} color="green" />
-        <StatCard 
-          title="إجمالي المبالغ المعتمدة" 
-          value={`${stats.totalAmount.toLocaleString()} ر.س`} 
-          icon={DollarSign} 
-          color="blue" 
+        <StatCard
+          title="إجمالي المبالغ المعتمدة"
+          value={`${stats.totalAmount.toLocaleString()} ر.س`}
+          icon={DollarSign}
+          color="blue"
         />
       </div>
 
@@ -452,6 +500,7 @@ export default function Overtime() {
         showAdd={hasPermission(PERMISSIONS.ADD_OVERTIME)}
       />
 
+      {/* ===== نموذج الإضافة/التعديل ===== */}
       <FormModal
         open={showForm}
         onClose={() => setShowForm(false)}
@@ -461,64 +510,64 @@ export default function Overtime() {
         size="lg"
       >
         <div className="space-y-4" dir="rtl">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label>اختيار الموظفين * ({selectedEmployees.length} محدد)</Label>
-              <Button type="button" variant="outline" size="sm" onClick={toggleAll}>
-                {selectedEmployees.length === filteredEmployees.filter(e => e.status === 'active').length ? "إلغاء الكل" : "تحديد الكل"}
-              </Button>
+          {!selectedOvertime && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>اختيار الموظفين * ({selectedEmployees.length} محدد)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={toggleAll}>
+                  {selectedEmployees.length === filteredEmployees.filter((e) => e.status === "active").length
+                    ? "إلغاء الكل"
+                    : "تحديد الكل"}
+                </Button>
+              </div>
+              <Input
+                placeholder="بحث عن موظف..."
+                className="mb-2"
+                onChange={(e) => {
+                  const search = e.target.value.toLowerCase();
+                  const filtered = filteredEmployees.filter(
+                    (emp) =>
+                      emp.status === "active" &&
+                      (emp.full_name?.toLowerCase().includes(search) ||
+                        emp.position?.toLowerCase().includes(search) ||
+                        emp.department?.toLowerCase().includes(search))
+                  );
+                  setFormData({ ...formData, filteredEmployees: filtered });
+                }}
+              />
+              <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                {(formData.filteredEmployees || filteredEmployees.filter((e) => e.status === "active")).map((emp) => {
+                  const { overtimeRate } = calculateOvertimeRate(emp.id);
+
+                  return (
+                    <label key={emp.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                      <Checkbox checked={selectedEmployees.includes(emp.id)} onCheckedChange={() => toggleEmployee(emp.id)} />
+                      <div className="flex-1">
+                        <p className="font-medium">{emp.full_name}</p>
+                        <p className="text-sm text-gray-500">
+                          {emp.position} - {emp.department}
+                          {overtimeRate > 0 && (
+                            <span className="text-blue-600 mr-2">• سعر الساعة الإضافية: {overtimeRate.toFixed(2)} ر.س</span>
+                          )}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-            <Input
-              placeholder="بحث عن موظف..."
-              className="mb-2"
-              onChange={(e) => {
-                const search = e.target.value.toLowerCase();
-                const filtered = filteredEmployees.filter(emp => 
-                  emp.status === 'active' && 
-                  (emp.full_name?.toLowerCase().includes(search) ||
-                   emp.position?.toLowerCase().includes(search) ||
-                   emp.department?.toLowerCase().includes(search))
-                );
-                setFormData({ ...formData, filteredEmployees: filtered });
-              }}
-            />
-            <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
-              {(formData.filteredEmployees || filteredEmployees.filter(e => e.status === 'active')).map((emp) => {
-                const { overtimeRate } = calculateOvertimeRate(emp.id);
-                
-                return (
-                  <label
-                    key={emp.id}
-                    className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedEmployees.includes(emp.id)}
-                      onCheckedChange={() => toggleEmployee(emp.id)}
-                    />
-                    <div className="flex-1">
-                      <p className="font-medium">{emp.full_name}</p>
-                      <p className="text-sm text-gray-500">
-                        {emp.position} - {emp.department}
-                        {overtimeRate > 0 && (
-                          <span className="text-blue-600 mr-2">
-                            • سعر الساعة الإضافية: {overtimeRate.toFixed(2)} ر.س
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
+          )}
+
+          {selectedOvertime && (
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="font-medium">{getEmployeeName(selectedOvertime.employee_id)}</p>
+              <p className="text-sm text-gray-500">تعديل طلب: {selectedOvertime.request_number}</p>
             </div>
-          </div>
+          )}
 
           <div>
             <Label>التاريخ *</Label>
-            <Input
-              type="date"
-              value={formData.date || ""}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-            />
+            <Input type="date" value={formData.date || ""} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
           </div>
 
           <div>
@@ -531,15 +580,15 @@ export default function Overtime() {
             />
           </div>
 
-          {selectedEmployees.length > 0 && formData.hours && (
+          {selectedEmployees.length > 0 && formData.hours && !selectedOvertime && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
               <h4 className="font-semibold text-blue-900">ملخص الحساب</h4>
               <p className="text-sm text-gray-700">سيتم إنشاء {selectedEmployees.length} سجل منفصل</p>
-              {selectedEmployees.slice(0, 3).map(empId => {
-                const emp = employees.find(e => e.id === empId);
+              {selectedEmployees.slice(0, 3).map((empId) => {
+                const emp = employees.find((e) => e.id === empId);
                 const { overtimeRate } = calculateOvertimeRate(empId);
                 const amount = overtimeRate * Number(formData.hours);
-                
+
                 return (
                   <div key={empId} className="text-sm border-t border-blue-200 pt-2">
                     <p className="font-medium text-gray-800">{emp?.full_name}</p>
@@ -566,6 +615,7 @@ export default function Overtime() {
         </div>
       </FormModal>
 
+      {/* ===== نافذة العرض التفصيلي مع مسار الاعتمادات ===== */}
       <FormModal
         open={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -574,8 +624,9 @@ export default function Overtime() {
         size="lg"
       >
         {selectedOvertime && (
-          <div className="space-y-4" dir="rtl">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <div className="space-y-5" dir="rtl">
+            {/* ===== رأس الطلب ===== */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
               <div>
                 <p className="text-sm text-gray-500">رقم الطلب</p>
                 <p className="font-bold text-lg">{selectedOvertime.request_number || "-"}</p>
@@ -584,6 +635,35 @@ export default function Overtime() {
               <StatusBadge status={selectedOvertime.status} />
             </div>
 
+            {/* ===== بطاقة المبلغ البارزة ===== */}
+            <div className="p-4 rounded-xl bg-gradient-to-l from-blue-50 to-blue-100 border border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <DollarSign className="w-5 h-5 text-blue-600" />
+                <span className="font-bold text-blue-800">تفاصيل المبلغ</span>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-gray-500">عدد الساعات</p>
+                  <p className="font-bold text-xl text-blue-900">{selectedOvertime.hours || 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">سعر الساعة الإضافية</p>
+                  <p className="font-bold text-lg text-blue-700">{selectedOvertime.overtime_rate?.toFixed(2)} ر.س</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">المبلغ الإجمالي</p>
+                  <p className="font-bold text-2xl text-green-600">
+                    {selectedOvertime.total_amount?.toLocaleString("ar-SA", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }) || 0}{" "}
+                    ر.س
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ===== تفاصيل إضافية ===== */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-sm text-gray-500">التاريخ</p>
@@ -592,22 +672,8 @@ export default function Overtime() {
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-sm text-gray-500">عدد الساعات</p>
-                <p className="font-bold text-xl text-[#7c3238]">{selectedOvertime.hours || 0} ساعة</p>
-              </div>
-              <div className="space-y-1">
                 <p className="text-sm text-gray-500">سعر الساعة العادي</p>
                 <p className="font-medium">{selectedOvertime.hourly_rate?.toFixed(2)} ر.س</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm text-gray-500">سعر الساعة الإضافية (×1.5)</p>
-                <p className="font-medium text-blue-600">{selectedOvertime.overtime_rate?.toFixed(2)} ر.س</p>
-              </div>
-              <div className="space-y-1 col-span-2">
-                <p className="text-sm text-gray-500">المبلغ الإجمالي</p>
-                <p className="font-bold text-2xl text-green-600">
-                  {selectedOvertime.total_amount?.toLocaleString('ar-SA', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || 0} ر.س
-                </p>
               </div>
             </div>
 
@@ -618,37 +684,100 @@ export default function Overtime() {
               </div>
             )}
 
-            {(selectedOvertime.status === "pending" || selectedOvertime.current_approval_level) && (
-              <ApprovalActions
-                entityName="Overtime"
-                recordId={selectedOvertime.id}
-                onApproved={() => {
-                  loadData();
-                  setShowViewModal(false);
-                }}
-              />
+            {/* ===== شارة المعتمد الحالي ===== */}
+            {pendingStep && selectedOvertime.status === "pending" && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-l from-amber-50 to-orange-50 border border-amber-200">
+                <Clock className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-amber-800">
+                  بانتظار اعتماد: <strong>{pendingStep.approver_job_title || pendingStep.role_name}</strong>
+                  {pendingStep.is_name_visible && pendingStep.approver_name ? ` (${pendingStep.approver_name})` : ""}
+                </span>
+              </div>
             )}
 
-            {(approvalChain?.length > 0 || selectedOvertime.approval_history?.length > 0) && (
+            {/* ===== مسار الاعتمادات ===== */}
+            {selectedOvertime.approval_steps?.length > 0 && (
               <div className="border-t pt-4">
-                <ApprovalTimeline
-                  approvalHistory={selectedOvertime.approval_history}
-                  approvalChain={approvalChain}
-                  currentLevel={selectedOvertime.current_approval_level}
-                  status={selectedOvertime.status}
-                />
+                <ApprovalTimeline approvalChain={selectedOvertime.approval_steps} />
+              </div>
+            )}
+
+            {/* ===== أزرار الاعتماد المباشرة ===== */}
+            {isCurrentApprover && selectedOvertime.status === "pending" && (
+              <div className="border-t pt-4 space-y-3">
+                <h4 className="font-semibold text-gray-700">إجراء الاعتماد</h4>
+
+                {showApprovalForm && (
+                  <div className="space-y-2">
+                    <Textarea
+                      placeholder="أضف ملاحظاتك (اختياري)..."
+                      value={approvalNotes}
+                      onChange={(e) => setApprovalNotes(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      if (!showApprovalForm) {
+                        setShowApprovalForm("approve");
+                        return;
+                      }
+                      handleApprovalAction("approve");
+                    }}
+                    disabled={approvalProcessing}
+                    className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                  >
+                    <CheckCircle className="w-4 h-4 ml-2" />
+                    اعتماد
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!showApprovalForm) {
+                        setShowApprovalForm("return");
+                        return;
+                      }
+                      handleApprovalAction("return");
+                    }}
+                    disabled={approvalProcessing}
+                    variant="outline"
+                    className="border-amber-500 text-amber-700 hover:bg-amber-50 flex-1"
+                  >
+                    <RotateCcw className="w-4 h-4 ml-2" />
+                    إرجاع
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!showApprovalForm) {
+                        setShowApprovalForm("reject");
+                        return;
+                      }
+                      handleApprovalAction("reject");
+                    }}
+                    disabled={approvalProcessing}
+                    variant="outline"
+                    className="border-red-500 text-red-700 hover:bg-red-50 flex-1"
+                  >
+                    <XCircle className="w-4 h-4 ml-2" />
+                    رفض
+                  </Button>
+                </div>
+
+                {showApprovalForm && (
+                  <p className="text-xs text-center text-gray-400">
+                    المبلغ: {selectedOvertime.total_amount?.toFixed(2)} ر.س • {selectedOvertime.hours} ساعة
+                  </p>
+                )}
               </div>
             )}
           </div>
         )}
       </FormModal>
 
-      <FormModal
-        open={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        title="استيراد الساعات الإضافية"
-        showFooter={false}
-      >
+      {/* ===== نافذة الاستيراد ===== */}
+      <FormModal open={showImportModal} onClose={() => setShowImportModal(false)} title="استيراد الساعات الإضافية" showFooter={false}>
         <div className="space-y-4" dir="rtl">
           <p className="text-gray-600">قم برفع ملف CSV أو Excel يحتوي على الأعمدة التالية:</p>
           <ul className="text-sm text-gray-600 mr-4 list-disc">
@@ -673,6 +802,18 @@ export default function Overtime() {
         onConfirm={confirmDelete}
         title="حذف السجل"
         description="هل أنت متأكد من حذف هذا السجل؟"
+      />
+
+      <ConfirmDialog
+        open={showForceApproveDialog}
+        onClose={() => setShowForceApproveDialog(false)}
+        onConfirm={handleForceApprove}
+        title="تأكيد الاعتماد النهائي الاستثنائي"
+        description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+        confirmLabel="تأكيد الاعتماد ⚡"
+        cancelLabel="إلغاء"
+        variant="destructive"
+        loading={forceApproveLoading}
       />
     </div>
   );
