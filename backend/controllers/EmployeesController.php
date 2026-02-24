@@ -10,7 +10,7 @@ class EmployeesController extends BaseController {
     
     protected $fillable = [
         'id', 'employee_number', 'full_name', 'id_number', 'phone', 'email',
-        'position', 'department', 'work_location_id', 'hire_date', 'date_of_joining', 'status',
+        'position', 'department', 'work_location_id', 'work_schedule_id', 'hire_date', 'date_of_joining', 'status',
         'profile_image', 'documents', 'nationality', 'gender', 'birth_date',
         'bank_name', 'bank_account', 'iban'
     ];
@@ -159,12 +159,12 @@ class EmployeesController extends BaseController {
             $employee['position_name'] = $pos ? $pos['name'] : $employee['position'];
         }
         
-        // Get work location name
-        if (isset($employee['work_location_id']) && $employee['work_location_id']) {
-            $stmt = $this->db->prepare("SELECT `name` FROM `work_locations` WHERE `id` = :id");
-            $stmt->execute([':id' => $employee['work_location_id']]);
-            $loc = $stmt->fetch();
-            $employee['work_location_name'] = $loc ? $loc['name'] : null;
+        // Get work schedule name
+        if (isset($employee['work_schedule_id']) && $employee['work_schedule_id']) {
+            $stmt = $this->db->prepare("SELECT `name` FROM `work_schedules` WHERE `id` = :id");
+            $stmt->execute([':id' => $employee['work_schedule_id']]);
+            $sch = $stmt->fetch();
+            $employee['work_schedule_name'] = $sch ? $sch['name'] : null;
         }
         
         return $employee;

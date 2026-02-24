@@ -361,17 +361,34 @@ export default function Settings() {
           },
         },
         {
+          header: "النوع",
+          accessor: "schedule_type",
+          cell: (row) => row.schedule_type === 'flexible' ? "مرن" : "ثابت",
+        },
+        {
           header: "بداية الدوام",
           accessor: "start_time",
+          cell: (row) => row.schedule_type === 'flexible' ? "-" : (row.start_time || "-")
         },
         {
           header: "نهاية الدوام",
           accessor: "end_time",
+          cell: (row) => row.schedule_type === 'flexible' ? "-" : (row.end_time || "-")
+        },
+        {
+          header: "الساعات المطلوبة",
+          accessor: "total_hours",
+          cell: (row) => row.schedule_type === 'flexible' ? `${row.total_hours || 8} س` : "-",
         },
         {
           header: "فترة السماح",
           accessor: "grace_period_minutes",
           cell: (row) => `${row.grace_period_minutes || 0} دقيقة`,
+        },
+        {
+          header: "رمضان",
+          accessor: "ramadan",
+          cell: (row) => row.ramadan_start_date ? "✅ مفعل" : "❌ غير محدد",
         },
         baseColumns[1],
         baseColumns[2],
@@ -688,24 +705,54 @@ export default function Settings() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>بداية الدوام *</Label>
-                <Input
-                  type="time"
-                  value={formData.start_time || ""}
-                  onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>نهاية الدوام *</Label>
-                <Input
-                  type="time"
-                  value={formData.end_time || ""}
-                  onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                />
-              </div>
+            <div>
+              <Label>نوع الدوام</Label>
+              <Select
+                value={formData.schedule_type || "fixed"}
+                onValueChange={(v) => setFormData({ ...formData, schedule_type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">دوام ثابت (بمواعيد حضور وانصراف)</SelectItem>
+                  <SelectItem value="flexible">دوام مرن (ساعات محددة بدون وقت ثابت)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {formData.schedule_type === 'flexible' && (
+              <div>
+                <Label>عدد ساعات العمل المطلوبة يومياً *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={formData.total_hours || 8}
+                  onChange={(e) => setFormData({ ...formData, total_hours: Number(e.target.value) })}
+                  placeholder="مثلاً: 8"
+                />
+              </div>
+            )}
+            {formData.schedule_type === "fixed" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>وقت الحضور *</Label>
+                  <Input
+                    type="time"
+                    value={formData.start_time || ""}
+                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>وقت الانصراف *</Label>
+                  <Input
+                    type="time"
+                    value={formData.end_time || ""}
+                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <Label>فترة السماح (بالدقائق)</Label>
               <Input
@@ -752,6 +799,65 @@ export default function Settings() {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-gray-100">
+              <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <span className="text-xl">🌙</span> إعدادات شهر رمضان (مواعيد خاصة)
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>تاريخ بداية رمضان</Label>
+                  <Input
+                    type="date"
+                    value={formData.ramadan_start_date || ""}
+                    onChange={(e) => setFormData({ ...formData, ramadan_start_date: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>تاريخ نهاية رمضان</Label>
+                  <Input
+                    type="date"
+                    value={formData.ramadan_end_date || ""}
+                    onChange={(e) => setFormData({ ...formData, ramadan_end_date: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {formData.schedule_type === "fixed" ? (
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <Label>بداية الدوام في رمضان</Label>
+                    <Input
+                      type="time"
+                      value={formData.ramadan_start_time || ""}
+                      onChange={(e) => setFormData({ ...formData, ramadan_start_time: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>نهاية الدوام في رمضان</Label>
+                    <Input
+                      type="time"
+                      value={formData.ramadan_end_time || ""}
+                      onChange={(e) => setFormData({ ...formData, ramadan_end_time: e.target.value })}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <Label>عدد ساعات العمل في رمضان</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    value={formData.ramadan_total_hours || ""}
+                    onChange={(e) => setFormData({ ...formData, ramadan_total_hours: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="مثلاً: 6"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    عدد الساعات المطلوبة يومياً خلال شهر رمضان.
+                  </p>
+                </div>
+              )}
             </div>
             <div>
               <Label>الحالة</Label>

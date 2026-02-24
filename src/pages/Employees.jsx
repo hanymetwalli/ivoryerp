@@ -64,6 +64,7 @@ export default function Employees() {
   const [banks, setBanks] = useState([]);
   const [nationalities, setNationalities] = useState([]);
   const [workLocations, setWorkLocations] = useState([]);
+  const [workSchedules, setWorkSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -95,13 +96,14 @@ export default function Employees() {
 
     setLoading(true);
     try {
-      const [empData, deptData, posData, bankData, natData, locData] = await Promise.all([
+      const [empData, deptData, posData, bankData, natData, locData, schData] = await Promise.all([
         base44.entities.Employee.list("-created_date", 200),
         base44.entities.Department.list(),
         base44.entities.Position.list(),
         base44.entities.BankName.list(),
         base44.entities.Nationality.list(),
         base44.entities.WorkLocation.list(),
+        base44.entities.WorkSchedule.list(),
       ]);
 
       setEmployees(empData);
@@ -110,6 +112,7 @@ export default function Employees() {
       setBanks(bankData);
       setNationalities(natData);
       setWorkLocations(locData);
+      setWorkSchedules(schData);
 
       // تطبيق نطاق البيانات
       const viewPermission = PERMISSIONS.VIEW_ALL_EMPLOYEES;
@@ -385,6 +388,14 @@ export default function Employees() {
       cell: (row) => {
         const loc = workLocations.find(l => l.id === row.work_location_id);
         return loc?.name || "-";
+      },
+    },
+    {
+      header: "جدول العمل",
+      accessor: "work_schedule_id",
+      cell: (row) => {
+        const sch = workSchedules.find(s => s.id === row.work_schedule_id);
+        return sch?.name || "-";
       },
     },
     {
@@ -665,6 +676,28 @@ export default function Employees() {
                           {loc.name}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>جدول العمل *</Label>
+                  <Select
+                    value={formData.work_schedule_id || ""}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, work_schedule_id: v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر جدول العمل" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workSchedules
+                        .filter((s) => s.status === "active" && s.work_location_id === formData.work_location_id)
+                        .map((sch) => (
+                          <SelectItem key={sch.id} value={sch.id}>
+                            {sch.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

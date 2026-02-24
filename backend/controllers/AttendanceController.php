@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/BaseController.php';
+require_once __DIR__ . '/../services/AttendanceService.php';
 
 class AttendanceController extends BaseController {
     protected $table = 'attendance';
@@ -13,6 +14,13 @@ class AttendanceController extends BaseController {
         'check_out_time', 'check_out_location', 'status', 'notes',
         'is_late', 'late_minutes', 'working_hours', 'overtime_hours', 'source'
     ];
+
+    private $attendanceService;
+
+    public function __construct() {
+        parent::__construct();
+        $this->attendanceService = new AttendanceService();
+    }
 
     protected $defaultSort = 'date';
 
@@ -68,7 +76,10 @@ class AttendanceController extends BaseController {
     /**
      * Helper: Calculate Attendance Metrics (Late, Work Hours, Overtime)
      */
-    private function calculateAttendanceMetrics($employee, $date, $inTime, $outTime) {
+    /**
+     * Helper: Calculate Attendance Metrics (Late, Work Hours, Overtime)
+     */
+    private function calculateAttendanceMetrics($employeeId, $date, $inTime, $outTime) {
         $metrics = [
             'is_late' => 0,
             'late_minutes' => 0,
@@ -78,10 +89,13 @@ class AttendanceController extends BaseController {
 
         if (!$inTime) return $metrics;
 
+        $schedule = $this->attendanceService->getScheduleForDate($employeeId, $date);
+        if (!$schedule) return $metrics;
+
         // 1. Calculate Late Status
-        if (!empty($employee['start_time'])) {
-            $scheduledStart = $employee['start_time']; 
-            $grace = $employee['grace_period_minutes'] ?: 0;
+        if ($schedule['type'] === 'fixed' && !empty($schedule['start_time'])) {
+            $scheduledStart = $schedule['start_time']; 
+            $grace = $schedule['grace_period'];
             
             $scheduledStartTs = strtotime("$date $scheduledStart");
             $actualInTs = strtotime("$date $inTime");
@@ -103,22 +117,7 @@ class AttendanceController extends BaseController {
             }
             
             $metrics['working_hours'] = round(($outTs - $inTs) / 3600, 2);
-            
-            // Calculate Shift Duration
-            $shiftDuration = 8; 
-            if (!empty($employee['start_time']) && !empty($employee['end_time'])) {
-                $shiftStartTs = strtotime("$date " . $employee['start_time']);
-                $shiftEndTs = strtotime("$date " . $employee['end_time']);
-                
-                if ($shiftEndTs < $shiftStartTs) {
-                    $shiftEndTs += 24 * 60 * 60; 
-                }
-                
-                $calculatedShift = ($shiftEndTs - $shiftStartTs) / 3600;
-                if ($calculatedShift > 0) {
-                    $shiftDuration = $calculatedShift;
-                }
-            }
+            $shiftDuration = $schedule['total_hours'];
             
             if ($metrics['working_hours'] > $shiftDuration) {
                 $metrics['overtime_hours'] = $metrics['working_hours'] - $shiftDuration;
@@ -318,15 +317,7 @@ class AttendanceController extends BaseController {
                     if ($finalIn || $finalOut) $status = 'present';
                 }
 
-                // الحسابات الموحدة
-                $empInfo = $this->db->query("SELECT * FROM employees WHERE id='$empId'")->fetch(PDO::FETCH_ASSOC);
-                if ($info) {
-                    $empInfo['start_time'] = $info['start_time'];
-                    $empInfo['end_time'] = $info['end_time'];
-                    $empInfo['grace_period_minutes'] = $info['grace_period'];
-                }
-                
-                $metrics = $this->calculateAttendanceMetrics($empInfo, $dateYMD, $finalIn, $finalOut);
+                $metrics = $this->calculateAttendanceMetrics($empId, $dateYMD, $finalIn, $finalOut);
 
                 if ($isUpdate) {
                     $updateStmt->execute([
@@ -388,17 +379,7 @@ class AttendanceController extends BaseController {
         $inTime = $data['check_in_time'] ?? $record['check_in_time'];
         $outTime = $data['check_out_time'] ?? $record['check_out_time'];
         
-        $stmt = $this->db->prepare("
-            SELECT e.*, s.start_time, s.end_time, s.grace_period_minutes
-            FROM employees e
-            LEFT JOIN work_locations l ON e.work_location_id = l.id
-            LEFT JOIN work_schedules s ON l.id = s.work_location_id
-            WHERE e.id = ?
-        ");
-        $stmt->execute([$record['employee_id']]);
-        $employee = $stmt->fetch();
-
-        $metrics = $this->calculateAttendanceMetrics($employee, $date, $inTime, $outTime);
+        $metrics = $this->calculateAttendanceMetrics($record['employee_id'], $date, $inTime, $outTime);
         $data = array_merge($data, $metrics);
         $data['updated_at'] = date('Y-m-d H:i:s');
 
@@ -432,11 +413,9 @@ class AttendanceController extends BaseController {
         }
 
         $stmt = $this->db->prepare("
-            SELECT e.*, l.name as location_name, l.latitude, l.longitude, l.radius_meters, l.use_coordinates,
-                   s.start_time, s.end_time, s.grace_period_minutes
+            SELECT e.*, l.name as location_name, l.latitude, l.longitude, l.radius_meters, l.use_coordinates
             FROM employees e
             LEFT JOIN work_locations l ON e.work_location_id = l.id
-            LEFT JOIN work_schedules s ON l.id = s.work_location_id
             WHERE e.id = :id
         ");
         $stmt->execute([':id' => $employeeId]);
@@ -468,7 +447,7 @@ class AttendanceController extends BaseController {
         $stmt->execute([$employeeId, $date]);
         if ($stmt->fetch()) { return ['success' => false, 'error' => 'مسجل مسبقاً لهذا اليوم']; }
 
-        $metrics = $this->calculateAttendanceMetrics($employee, $date, $inTimeStr, $outTimeStr);
+        $metrics = $this->calculateAttendanceMetrics($employeeId, $date, $inTimeStr, $outTimeStr);
 
         try {
             $locJson = null;
@@ -532,11 +511,9 @@ class AttendanceController extends BaseController {
         $employeeId = $attendance['employee_id'];
 
         $stmt = $this->db->prepare("
-            SELECT l.name, l.latitude, l.longitude, l.radius_meters, l.use_coordinates,
-                   s.start_time, s.end_time
+            SELECT l.name, l.latitude, l.longitude, l.radius_meters, l.use_coordinates
             FROM employees e
             LEFT JOIN work_locations l ON e.work_location_id = l.id
-            LEFT JOIN work_schedules s ON l.id = s.work_location_id
             WHERE e.id = :id
         ");
         $stmt->execute([':id' => $employeeId]);
@@ -569,7 +546,7 @@ class AttendanceController extends BaseController {
         // Construct employee info for helper (minimal needed)
         $empInfo = $location; // Contains schedule info
         
-        $metrics = $this->calculateAttendanceMetrics($empInfo, $checkInDate, $checkInTime, $time);
+        $metrics = $this->calculateAttendanceMetrics($employeeId, $checkInDate, $checkInTime, $time);
 
         return parent::update($id, [
             'check_out_time' => $time,
@@ -608,20 +585,21 @@ class AttendanceController extends BaseController {
 
     public function getScheduleInfo($employeeId) {
         $stmt = $this->db->prepare("
-            SELECT s.start_time, s.end_time, s.grace_period_minutes, 
-                   l.latitude, l.longitude, l.radius_meters, l.use_coordinates, l.name as location_name
+            SELECT l.latitude, l.longitude, l.radius_meters, l.use_coordinates, l.name as location_name
             FROM employees e
             LEFT JOIN work_locations l ON e.work_location_id = l.id
-            LEFT JOIN work_schedules s ON l.id = s.work_location_id
             WHERE e.id = ?
         ");
         $stmt->execute([$employeeId]);
         $data = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $date = date('Y-m-d');
+        $schedule = $this->attendanceService->getScheduleForDate($employeeId, $date);
+
         return [
-            'start_time' => $data['start_time'] ?? '08:00:00', 
-            'end_time'   => $data['end_time'] ?? '16:00:00',   
-            'grace_period' => $data['grace_period_minutes'] ?? 15,
+            'start_time' => $schedule['start_time'] ?? '08:00:00', 
+            'end_time'   => $schedule['end_time'] ?? '16:00:00',   
+            'grace_period' => $schedule['grace_period'] ?? 15,
             'use_coords' => $data['use_coordinates'] ?? 0,
             'radius' => $data['radius_meters'] ?? 0,
             'lat' => $data['latitude'] ?? null,

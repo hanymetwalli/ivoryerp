@@ -10,7 +10,8 @@ class WorkLocationsController extends BaseController {
     
     protected $fillable = [
         'id', 'name', 'code', 'address', 'use_coordinates',
-        'latitude', 'longitude', 'radius_meters', 'status'
+        'latitude', 'longitude', 'radius_meters', 'status',
+        'ramadan_start_date', 'ramadan_end_date', 'ramadan_hours'
     ];
     
     protected $searchable = ['name', 'code', 'address'];

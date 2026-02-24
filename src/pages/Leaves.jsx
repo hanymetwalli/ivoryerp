@@ -329,7 +329,9 @@ export default function Leaves() {
       setShowForm(false);
     } catch (error) {
       console.error("Error saving request:", error);
-      toast.error("حدث خطأ");
+      // ivoryClient throws Error objects where message is already extracted from data
+      const msg = error.message || "حدث خطأ";
+      toast.error(msg);
     }
     setSaving(false);
   };

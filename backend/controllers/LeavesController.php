@@ -143,7 +143,37 @@ class LeavesController extends BaseController {
                 $diff = $start->diff($end);
                 $data['days_count'] = $diff->days + 1;
             }
-            
+
+            // 180-Day Rule Implementation
+            if (!empty($data['employee_id']) && !empty($data['leave_type_id']) && !empty($data['start_date'])) {
+                // Fetch employee joining date and leave type paid status
+                $stmt = $this->db->prepare("
+                    SELECT e.date_of_joining, lt.is_paid 
+                    FROM employees e, leave_types lt 
+                    WHERE e.id = :eid AND lt.id = :ltid
+                ");
+                $stmt->execute([
+                    ':eid' => $data['employee_id'],
+                    ':ltid' => $data['leave_type_id']
+                ]);
+                $ruleData = $stmt->fetch();
+
+                if ($ruleData) {
+                    $joiningDate = new DateTime($ruleData['date_of_joining']);
+                    $startDate = new DateTime($data['start_date']);
+                    $interval = $joiningDate->diff($startDate);
+                    $daysSinceJoining = $interval->invert ? -$interval->days : $interval->days;
+
+                    if ($ruleData['is_paid'] && $daysSinceJoining < 180) {
+                        http_response_code(422);
+                        return [
+                            'error' => true, 
+                            'message' => 'عفواً، لا يمكن طلب إجازة مدفوعة الأجر قبل مرور 6 أشهر على تاريخ التعيين. يُسمح فقط بالإجازات غير المدفوعة'
+                        ];
+                    }
+                }
+            }
+
             $result = parent::store($data);
 
             if (isset($result['id'])) {

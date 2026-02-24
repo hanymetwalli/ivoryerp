@@ -296,6 +296,7 @@ export default function WorkLocations() {
               </SelectContent>
             </Select>
           </div>
+
         </div>
       </FormModal>
 
