@@ -150,6 +150,14 @@ const ALL_PERMISSIONS = [
   { code: "delete_job_description", name: "حذف وصف وظيفي", category: "job_descriptions", scope: true },
   { code: "add_employee_notes", name: "إضافة ملاحظات للموظفين", category: "job_descriptions", scope: false },
 
+  { code: "manage_penalty_settings", name: "إدارة لائحة الجزاءات", category: "violations", scope: false },
+  { code: "view_all_violations", name: "عرض جميع المخالفات", category: "violations", scope: true },
+  { code: "view_department_violations", name: "عرض مخالفات القسم", category: "violations", scope: true },
+  { code: "view_violations", name: "عرض مخالفاتي الشخصية", category: "violations", scope: true },
+  { code: "create_violation", name: "تسجيل مخالفة", category: "violations", scope: false },
+  { code: "update_violation", name: "تعديل مخالفة", category: "violations", scope: true },
+  { code: "delete_violation", name: "حذف مخالفة", category: "violations", scope: true },
+
   { code: "force_approve", name: "الاعتماد النهائي الاستثنائي", category: "approvals", scope: false },
 ];
 
@@ -174,6 +182,7 @@ const CATEGORIES = {
   settings: "الإعدادات",
   system: "إدارة النظام",
   job_descriptions: "الأوصاف الوظيفية",
+  violations: "المخالفات والجزاءات",
   approvals: "الاعتمادات الاستثنائية",
 };
 

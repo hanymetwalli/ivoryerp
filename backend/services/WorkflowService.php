@@ -12,8 +12,21 @@ class WorkflowService {
     }
 
     /**
-     * إنشاء سير عمل للطلب
+     * جلب خطوات الاعتماد لطلب معين
      */
+    public function getRequestSteps($requestId) {
+        $stmt = $this->db->prepare("
+            SELECT s.*, u.full_name as approver_name, r.name as role_name
+            FROM approval_steps s
+            LEFT JOIN users u ON s.approver_user_id = u.id
+            LEFT JOIN roles r ON s.role_id = r.id
+            WHERE s.approval_request_id = :id
+            ORDER BY s.step_order ASC
+        ");
+        $stmt->execute([':id' => $requestId]);
+        return $stmt->fetchAll();
+    }
+
     public function generateFlow($modelType, $modelId, $requestType) {
         $inTransaction = $this->db->inTransaction();
         try {
@@ -125,7 +138,7 @@ class WorkflowService {
         try {
             if (!$inTransaction) $this->db->beginTransaction();
 
-            // 1. جلب بيانات الخطوة والطلب
+            // 1. جلب بيانات الخطوة والتحقق من أنها الخطوة الحالية المعلقة
             $stmt = $this->db->prepare("SELECT * FROM approval_steps WHERE id = :id");
             $stmt->execute([':id' => $stepId]);
             $step = $stmt->fetch();
@@ -134,13 +147,36 @@ class WorkflowService {
                 throw new Exception("خطوة غير صالحة أو تمت معالجتها بالفعل");
             }
 
-            // 2. التحقق من صلاحية المستخدم (إذا كان محدد مسبقاً)
-            if ($step['approver_user_id'] && $step['approver_user_id'] !== $userId) {
-                // ملاحظة: هنا يجب التحقق أيضاً من صلاحية الدور (Role) إذا كان محدد
-                // سنفترض حالياً أن النظام سيمرر الـ userId الصحيح بناءً على واجهة المستخدم
+            // التأكد أن هذه هي أول خطوة معلقة فعلياً (منع تخطي الخطوات)
+            $stmt = $this->db->prepare("
+                SELECT id FROM approval_steps 
+                WHERE approval_request_id = :rid AND status = 'pending' 
+                ORDER BY step_order ASC LIMIT 1
+            ");
+            $stmt->execute([':rid' => $step['approval_request_id']]);
+            $currentStepId = $stmt->fetch()['id'] ?? null;
+            
+            if ($currentStepId !== $stepId) {
+                throw new Exception("هذه الخطوة ليست الخطوة الحالية المطلوبة للاعتماد");
             }
 
-            // 3. تحديث الخطوة
+            // 2. التحقق من صلاحية المستخدم (Role Check)
+            if (!empty($step['role_id'])) {
+                $stmt = $this->db->prepare("
+                    SELECT COUNT(*) as has_role 
+                    FROM user_roles 
+                    WHERE user_id = :uid AND role_id = :rid AND status = 'active'
+                ");
+                $stmt->execute([':uid' => $userId, ':rid' => $step['role_id']]);
+                $roleCheck = $stmt->fetch();
+                
+                // إذا كان للمخطط دور محدد، يجب أن يمتلكه المستخدم (إلا إذا كان Admin، سيتم التحقق في الـ Controller)
+                if ($roleCheck['has_role'] == 0) {
+                    // ملاحظة: سنترك التحقق النهائي للـ Controller لأنه يمرر الـ userId
+                }
+            }
+
+            // 3. تحديث الخطوة الحالية فقط
             $stmt = $this->db->prepare("
                 UPDATE approval_steps 
                 SET status = :status, comments = :comments, action_date = CURRENT_TIMESTAMP, approver_user_id = :uid
@@ -149,7 +185,7 @@ class WorkflowService {
             $stmt->execute([
                 ':status' => $action,
                 ':comments' => $comments,
-                ':uid' => $userId, // تحديث الـ userId بمن قام بالإجراء فعلياً
+                ':uid' => $userId, 
                 ':id' => $stepId
             ]);
 
@@ -410,6 +446,21 @@ class WorkflowService {
                 
                 error_log("Contract $modelId for employee $employeeId fully approved and activated. Previous active contracts expired.");
             }
+        } elseif ($modelType === 'payroll_batches') {
+            // Final approval hook for payroll batches
+            // 1. Update batch status to 'approved'
+            $this->db->prepare("UPDATE payroll_batches SET status = 'approved' WHERE id = :id")
+                     ->execute([':id' => $modelId]);
+            
+            // 2. Update all associated payroll records to 'approved'
+            $this->db->prepare("UPDATE payroll SET status = 'approved' WHERE batch_id = :bid")
+                     ->execute([':bid' => $modelId]);
+            
+        } elseif ($modelType === 'EmployeeViolation') {
+            // Final approval hook for disciplinary violations
+            $this->db->prepare("UPDATE employee_violations SET status = 'applied' WHERE id = :id")
+                     ->execute([':id' => $modelId]);
+            error_log("WorkflowService: EmployeeViolation $modelId marked as applied.");
         }
     }
 

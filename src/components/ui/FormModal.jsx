@@ -33,37 +33,39 @@ export default function FormModal({
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className={`${sizeClasses[size]} max-h-[90vh] overflow-y-auto`}>
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-800">
-            {title}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            {title}
-          </DialogDescription>
-        </DialogHeader>
+        <form onSubmit={onSubmit}>
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-800">
+              {title}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              {title}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="py-4">{children}</div>
+          <div className="py-4">{children}</div>
 
-        {showFooter && (
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={loading}
-            >
-              {cancelLabel}
-            </Button>
-            <Button
-              onClick={onSubmit}
-              disabled={loading}
-              className="bg-[#7c3238] hover:bg-[#5a252a]"
-            >
-              {loading && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-              {submitLabel}
-            </Button>
-          </DialogFooter>
-        )}
+          {showFooter && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={loading}
+              >
+                {cancelLabel}
+              </Button>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="bg-[#7c3238] hover:bg-[#5a252a]"
+              >
+                {loading && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+                {submitLabel}
+              </Button>
+            </DialogFooter>
+          )}
+        </form>
       </DialogContent>
     </Dialog>
   );

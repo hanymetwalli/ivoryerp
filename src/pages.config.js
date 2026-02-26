@@ -76,6 +76,8 @@ import UserManagement from './pages/UserManagement';
 import WorkLocations from './pages/WorkLocations';
 import Login from './pages/Login';
 import Permissions from './pages/Permissions';
+import PenaltySettings from './pages/PenaltySettings';
+import Violations from './pages/Violations';
 import __Layout from './Layout.jsx';
 
 
@@ -109,6 +111,8 @@ export const PAGES = {
     "WorkLocations": WorkLocations,
     "Login": Login,
     "Permissions": Permissions,
+    "PenaltySettings": PenaltySettings,
+    "Violations": Violations,
 }
 
 export const pagesConfig = {

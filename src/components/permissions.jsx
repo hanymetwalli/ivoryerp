@@ -151,6 +151,15 @@ export const PERMISSIONS = {
   // الاعتمادات الاستثنائية
   FORCE_APPROVE: 'force_approve',
 
+  // الجزاءات والمخالفات
+  VIEW_ALL_VIOLATIONS: 'view_all_violations',
+  VIEW_DEPARTMENT_VIOLATIONS: 'view_department_violations',
+  MANAGE_PENALTY_SETTINGS: 'manage_penalty_settings',
+  CREATE_VIOLATION: 'create_violation',
+  UPDATE_VIOLATION: 'update_violation',
+  DELETE_VIOLATION: 'delete_violation',
+  VIEW_VIOLATIONS: 'view_violations',
+
   // أخرى
   CHECKIN_CHECKOUT: 'checkin_checkout',
   VIEW_DASHBOARD: 'view_dashboard',
@@ -200,6 +209,11 @@ export const ROLE_PERMISSIONS = {
     // التقارير
     PERMISSIONS.VIEW_REPORTS,
     PERMISSIONS.EXPORT_DATA,
+
+    // الجزاءات
+    PERMISSIONS.VIEW_DEPARTMENT_VIOLATIONS,
+    PERMISSIONS.CREATE_VIOLATION,
+    PERMISSIONS.VIEW_VIOLATIONS,
   ],
 
   [ROLES.EMPLOYEE]: [

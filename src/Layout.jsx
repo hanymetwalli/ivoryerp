@@ -110,6 +110,14 @@ function LayoutContent({ children, currentPageName }) {
         { name: "EvaluationTemplates", icon: Settings, path: createPageUrl("EvaluationTemplates"), label: "قوالب التقييم", permission: PERMISSIONS.MANAGE_EVALUATION_TEMPLATES },
       ]
     },
+    {
+      label: "الجزاءات والمخالفات",
+      icon: AlertCircle,
+      items: [
+        { name: "Violations", icon: AlertCircle, path: createPageUrl("Violations"), label: "سجل المخالفات", permission: PERMISSIONS.VIEW_ALL_VIOLATIONS },
+        { name: "PenaltySettings", icon: Shield, path: createPageUrl("PenaltySettings"), label: "لائحة الجزاءات", permission: PERMISSIONS.MANAGE_PENALTY_SETTINGS },
+      ]
+    },
     { name: "Reports", icon: BarChart3, path: createPageUrl("Reports"), label: "التقارير", permission: PERMISSIONS.VIEW_REPORTS },
     { name: "Settings", icon: Settings, path: createPageUrl("Settings"), label: "الإعدادات", permission: PERMISSIONS.MANAGE_SETTINGS },
     {

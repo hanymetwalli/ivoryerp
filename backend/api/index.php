@@ -86,6 +86,7 @@ $entities = [
     'deductions' => 'DeductionsController',
     'bonuses' => 'BonusesController',
     'payroll' => 'PayrollController',
+    'payroll-batches' => 'PayrollBatchesController',
     'work-locations' => 'WorkLocationsController',
     'work-schedules' => 'WorkSchedulesController',
     'roles' => 'RolesController',
@@ -123,6 +124,10 @@ $entities = [
     'approvals' => 'ApprovalsController',
     'workflow' => 'WorkflowController', // Placeholder to pass the whitelist
     'functions' => 'FunctionsController', // Placeholder to pass the whitelist
+    'company-profile' => 'CompanyProfileController',
+    'violation-types' => 'ViolationTypesController',
+    'penalty-policies' => 'PenaltyPoliciesController',
+    'employee-violations' => 'EmployeeViolationsController',
 ];
 
 if (!$entity) {

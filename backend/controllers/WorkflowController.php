@@ -23,16 +23,21 @@ class WorkflowController extends BaseController {
             return ['error' => true, 'message' => 'user_id مطلوب'];
         }
 
-        // التحقق من صلاحية "الاعتماد النهائي الاستثنائي"
-        $hasPerm = $this->hasPermission($userId, 'force_approve');
-        error_log("🔑 WorkflowController: Permission 'force_approve' for user $userId: " . ($hasPerm ? 'YES' : 'NO'));
-        
-        if (!$hasPerm) {
-            http_response_code(403);
-            return ['error' => true, 'message' => 'ليس لديك صلاحية الاعتماد النهائي الاستثنائي'];
-        }
-
         try {
+            if ($action === 'get-chain' || $action === 'get_chain') {
+                $workflowService = new WorkflowService();
+                return $workflowService->getRequestSteps($id);
+            }
+
+            // التحقق من صلاحية "الاعتماد النهائي الاستثنائي" للإجراءات التالية
+            $hasPerm = $this->hasPermission($userId, 'force_approve');
+            error_log("🔑 WorkflowController: Permission 'force_approve' for user $userId: " . ($hasPerm ? 'YES' : 'NO'));
+            
+            if (!$hasPerm) {
+                http_response_code(403);
+                return ['error' => true, 'message' => 'ليس لديك صلاحية الاعتماد النهائي الاستثنائي'];
+            }
+
             if ($action === 'force-approve' || $action === 'force_approve') {
                 error_log("⚡ WorkflowController: Initiating forceApprove for ID: $id");
                 $workflowService = new WorkflowService();

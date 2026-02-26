@@ -9,7 +9,7 @@ class PayrollController extends BaseController {
     protected $table = 'payroll';
     
     protected $fillable = [
-        'id', 'payroll_number', 'employee_id', 'month', 'year', 'payroll_date',
+        'id', 'payroll_number', 'employee_id', 'batch_id', 'month', 'year', 'payroll_date',
         'basic_salary', 'housing_allowance', 'transport_allowance', 'other_allowances',
         'additional_allowances', 'bonuses_amount', 'overtime_amount', 'gross_salary',
         'insurance_deduction', 'late_deduction', 'absence_deduction', 'other_deductions',
@@ -66,6 +66,8 @@ class PayrollController extends BaseController {
                 return $this->update($id, ['status' => 'approved']);
             case 'mark-paid':
                 return $this->update($id, ['status' => 'paid']);
+            case 'generate-batch':
+                return $this->generateBatch($data['month'], $data['year']);
             default:
                 return parent::customAction($id, $action, $data);
         }
@@ -78,21 +80,28 @@ class PayrollController extends BaseController {
         
         if (!$employeeId) throw new Exception('employee_id مطلوب');
         
-        // حذف الراتب القديم لنفس الشهر إذا كان "مسودة"
+        $batchId = $data['batch_id'] ?? null;
+
+        // حذف الراتب القديم لنفس الشهر إذا كان "مسودة" (لتجنب Duplicate entry في حال إعادة التوليد)
         $this->db->prepare("DELETE FROM payroll WHERE employee_id = :eid AND month = :m AND year = :y AND status = 'draft'")
                  ->execute([':eid' => $employeeId, ':m' => $month, ':y' => $year]);
         
         // التأكد من عدم وجود راتب معتمد أو مدفوع
-        $stmt = $this->db->prepare("SELECT id FROM payroll WHERE employee_id = :eid AND month = :m AND year = :y");
+        $stmt = $this->db->prepare("SELECT id FROM payroll WHERE employee_id = :eid AND month = :m AND year = :y AND status IN ('approved', 'paid')");
         $stmt->execute([':eid' => $employeeId, ':m' => $month, ':y' => $year]);
-        if ($stmt->fetch()) throw new Exception('يوجد راتب معتمد أو مدفوع لهذا الشهر');
+        $existing = $stmt->fetch();
+        if ($existing) {
+            throw new Exception('يوجد راتب معتمد أو مدفوع لهذا الشهر');
+        }
 
         // 1. جلب البيانات الأساسية (الموظف والعقد)
         $employee = $this->getRecord('employees', $employeeId);
         $stmt = $this->db->prepare("SELECT * FROM contracts WHERE employee_id = :id AND status = 'active' LIMIT 1");
         $stmt->execute([':id' => $employeeId]);
         $contract = $stmt->fetch();
-        if (!$contract) throw new Exception('لا يوجد عقد نشط للموظف');
+        if (!$contract) {
+            throw new Exception('لا يوجد عقد نشط للموظف');
+        }
 
         // 2. حساب تواريخ الشهر
         $monthStart = sprintf('%04d-%02d-01', $year, $month);
@@ -271,6 +280,7 @@ class PayrollController extends BaseController {
             'net_salary' => round($net, 2),
             'currency' => $contract['currency'] ?? 'SAR',
             'status' => 'draft',
+            'batch_id' => $batchId,
             'working_days' => 30 - ($absentDays + $unpaidLeaveDays + $terminationAbsence),
             'absent_days' => $absentDays + $unpaidLeaveDays + $terminationAbsence,
             'late_minutes' => $lateMinutes,
@@ -307,6 +317,93 @@ class PayrollController extends BaseController {
         }
         
         return ['message' => 'تمت العملية', 'calculated' => $success, 'errors' => $errors];
+    }
+
+    public function generateBatch($month, $year) {
+        $month = intval($month);
+        $year = intval($year);
+
+        // 1. التحقق من عدم وجود حزمة مسبقة
+        $stmt = $this->db->prepare("SELECT id FROM payroll_batches WHERE month = ? AND year = ?");
+        $stmt->execute([$month, $year]);
+        if ($stmt->fetch()) {
+            return ['success' => false, 'error' => "تم توليد مسير رواتب لهذا الشهر مسبقاً (" . $month . "/" . $year . ")"];
+        }
+
+        try {
+            $this->db->beginTransaction();
+
+            // 2. إنشاء سجل الحزمة الجديد
+            $batchId = $this->generateUUID();
+            $stmt = $this->db->prepare("INSERT INTO payroll_batches (id, month, year, status) VALUES (?, ?, ?, 'draft')");
+            $stmt->execute([$batchId, $month, $year]);
+
+            // 3. جلب الموظفين الذين لديهم عقود نشطة
+            $stmt = $this->db->prepare("SELECT employee_id FROM contracts WHERE status = 'active'");
+            $stmt->execute();
+            $contracts = $stmt->fetchAll();
+
+            $totalAmount = 0;
+            $count = 0;
+
+            foreach ($contracts as $contract) {
+                try {
+                    $result = $this->calculatePayroll([
+                        'employee_id' => $contract['employee_id'],
+                        'month' => $month,
+                        'year' => $year,
+                        'batch_id' => $batchId
+                    ]);
+
+                    if ($result && isset($result['id'])) {
+                        // جلب صافي الراتب المولد للإجمالي
+                        $stmt = $this->db->prepare("SELECT net_salary FROM payroll WHERE id = ?");
+                        $stmt->execute([$result['id']]);
+                        $payroll = $stmt->fetch();
+                        $totalAmount += (float)$payroll['net_salary'];
+                        $count++;
+                    }
+                } catch (Exception $e) {
+                    // تخطي الموظف إذا حدث خطأ في حسابه والاستمرار في الباقي
+                    error_log("Error generating payroll for employee {$contract['employee_id']} in batch $batchId: " . $e->getMessage());
+                }
+            }
+
+            if ($count === 0) {
+                throw new Exception("لم يتم توليد أي سجلات رواتب. يرجى التأكد من وجود موظفين بعقود نشطة.");
+            }
+
+            // 4. تحديث إجمالي الحزمة
+            $stmt = $this->db->prepare("UPDATE payroll_batches SET total_amount = ? WHERE id = ?");
+            $stmt->execute([$totalAmount, $batchId]);
+
+            // 5. إنشاء مسار الاعتماد (Workflow)
+            require_once __DIR__ . '/../services/WorkflowService.php';
+            $workflow = new WorkflowService();
+            $flowResult = $workflow->generateFlow('payroll_batches', $batchId, 'PayrollBatch');
+            
+            if ($flowResult && isset($flowResult['approval_request_id'])) {
+                $stmt = $this->db->prepare("UPDATE payroll_batches SET workflow_id = ? WHERE id = ?");
+                $stmt->execute([$flowResult['approval_request_id'], $batchId]);
+            }
+
+            $this->db->commit();
+            return ['success' => true, 'batch_id' => $batchId, 'count' => $count, 'total' => $totalAmount];
+
+        } catch (Exception $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    private function generateUUID() {
+        return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
     }
 
     private function getRecord($table, $id) {

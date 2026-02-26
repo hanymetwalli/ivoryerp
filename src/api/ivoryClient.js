@@ -253,6 +253,7 @@ const ivoryClient = {
         Deduction: new Entity('deductions'),
         Bonus: new Entity('bonuses'),
         Payroll: new Entity('payroll'),
+        PayrollBatches: new Entity('payroll-batches'),
         WorkLocation: new Entity('work-locations'),
         WorkSchedule: new Entity('work-schedules'),
         Role: new Entity('roles'),
@@ -263,6 +264,7 @@ const ivoryClient = {
         Resignation: new Entity('resignations'),
         SystemSettings: new Entity('settings'),
         AuditLog: new Entity('audit-logs'),
+        CompanyProfile: new Entity('company-profile'),
         // Lookup tables
         Nationality: new Entity('nationalities'),
         BankName: new Entity('bank-names'),
@@ -286,6 +288,9 @@ const ivoryClient = {
         WorkflowSettings: new Entity('workflow-settings'),
         Approvals: new Entity('approvals'),
         Workflow: new Entity('workflow'),
+        ViolationType: new Entity('violation-types'),
+        PenaltyPolicy: new Entity('penalty-policies'),
+        EmployeeViolation: new Entity('employee-violations'),
     },
 
     functions: new Functions(),

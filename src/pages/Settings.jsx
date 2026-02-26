@@ -68,6 +68,7 @@ export default function Settings() {
   const [insuranceSettings, setInsuranceSettings] = useState([]);
   const [workSchedules, setWorkSchedules] = useState([]);
   const [trainings, setTrainings] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState(null);
 
   const [systemSettings, setSystemSettings] = useState({});
   const [roles, setRoles] = useState([]);
@@ -116,9 +117,9 @@ export default function Settings() {
         attStatusData,
         trainStatusData,
         empData,
-
         locData,
         sysData,
+        compData,
       ] = await Promise.all([
         base44.entities.Department.list("-created_date"),
         base44.entities.Position.list("-created_date"),
@@ -134,9 +135,9 @@ export default function Settings() {
         base44.entities.AttendanceStatus.list("-created_date"),
         base44.entities.TrainingStatus.list("-created_date"),
         base44.entities.Employee.list(),
-
         base44.entities.WorkLocation.list(),
         base44.entities.SystemSettings.list(),
+        base44.entities.CompanyProfile.list(),
       ]);
       setDepartments(deptData);
       setPositions(posData);
@@ -154,6 +155,7 @@ export default function Settings() {
       setEmployees(empData);
       setWorkLocations(locData);
       setSystemSettings(sysData);
+      setCompanyProfile(Array.isArray(compData) ? compData[0] : (compData?.id ? compData : null));
 
       // Fetch roles and workflows
       const [rolesData, workflowsData] = await Promise.all([
@@ -1024,9 +1026,13 @@ export default function Settings() {
             <Award className="w-4 h-4" />
             حالات التدريب
           </TabsTrigger>
-          <TabsTrigger value="roles" className="flex items-center gap-1">
+          <TabsTrigger value="company" className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" />
+            بيانات الشركة
+          </TabsTrigger>
+          <TabsTrigger value="roles" className="flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            الأدوار والصلاحيات
+            الأدوار
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-1">
             <Users className="w-4 h-4" />
@@ -1227,6 +1233,106 @@ export default function Settings() {
           />
         </TabsContent>
 
+        <TabsContent value="company" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>بيانات المنشأة</CardTitle>
+              <CardDescription>إدارة المعلومات الأساسية للشركة التي تظهر في التقارير والمستندات الرسمية</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6" dir="rtl">
+                <div className="space-y-2">
+                  <Label>اسم الشركة *</Label>
+                  <Input
+                    value={companyProfile?.company_name || ""}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, company_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>البريد الإلكتروني</Label>
+                  <Input
+                    type="email"
+                    value={companyProfile?.email || ""}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>الموقع الإلكتروني</Label>
+                  <Input
+                    value={companyProfile?.website || ""}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, website: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>رقم الهاتف</Label>
+                  <Input
+                    value={Array.isArray(companyProfile?.phones) ? companyProfile.phones[0] : (companyProfile?.phones || "")}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, phones: [e.target.value] })}
+                  />
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <Label>العنوان</Label>
+                  <Textarea
+                    value={companyProfile?.address || ""}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, address: e.target.value })}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>مدير الشركة (يظهر في التوقيعات)</Label>
+                  <Select
+                    value={companyProfile?.manager_id || ""}
+                    onValueChange={(val) => setCompanyProfile({ ...companyProfile, manager_id: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر المدير" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => (
+                        <SelectItem key={emp.id} value={emp.id}>{emp.full_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>مسار الشعار (Logo Path)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={companyProfile?.logo_path || ""}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, logo_path: e.target.value })}
+                    />
+                    {companyProfile?.logo_path && (
+                      <div className="w-10 h-10 border rounded p-1 bg-gray-50">
+                        <img src={companyProfile.logo_path} alt="Logo Preview" className="w-full h-full object-contain" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end mt-8 border-t pt-6">
+                <Button
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      await base44.entities.CompanyProfile.update(companyProfile.id, companyProfile);
+                      toast.success("تم حفظ بيانات الشركة بنجاح");
+                      loadData();
+                    } catch (error) {
+                      console.error("Save company profile error:", error);
+                      toast.error("فشل حفظ البيانات");
+                    }
+                    setSaving(false);
+                  }}
+                  disabled={saving}
+                  className="bg-[#7c3238] hover:bg-[#5a252a] flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="roles" className="mt-4">
           <div className="bg-white rounded-xl shadow-sm border p-8 text-center space-y-4">
             <Shield className="w-16 h-16 mx-auto text-[#7c3238]" />
@@ -1277,7 +1383,8 @@ export default function Settings() {
                     <SelectItem value="ContractRequest">طلب عقد (ContractRequest)</SelectItem>
                     <SelectItem value="ResignationRequest">طلب استقالة (Resignation)</SelectItem>
                     <SelectItem value="PerformanceEvaluation">تقييم الأداء (PerformanceEvaluation)</SelectItem>
-                    <SelectItem value="Payroll">مسير رواتب (Payroll)</SelectItem>
+                    <SelectItem value="Payroll">فاتورة راتب فردية (Payroll)</SelectItem>
+                    <SelectItem value="PayrollBatch">مسير رواتب - حزمة (PayrollBatch)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
