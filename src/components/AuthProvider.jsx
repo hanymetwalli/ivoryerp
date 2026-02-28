@@ -41,11 +41,11 @@ export function AuthProvider({ children }) {
         setLoading(false);
         return;
       }
-      
+
       // تحميل دور المستخدم من قاعدة البيانات
-      const userRoles = await base44.entities.UserRole.filter({ 
-        user_id: user.id, 
-        status: 'active' 
+      const userRoles = await base44.entities.UserRole.filter({
+        user_id: user.id,
+        status: 'active'
       });
 
       if (userRoles.length === 0) {
@@ -61,8 +61,8 @@ export function AuthProvider({ children }) {
 
       // تحميل بيانات الموظف المرتبط بالمستخدم
       if (userRoleData.employee_id) {
-        const empData = await base44.entities.Employee.filter({ 
-          id: userRoleData.employee_id 
+        const empData = await base44.entities.Employee.filter({
+          id: userRoleData.employee_id
         });
         if (empData.length > 0) {
           setUserEmployee(empData[0]);
@@ -70,7 +70,7 @@ export function AuthProvider({ children }) {
       }
 
       // تحميل بيانات الدور والصلاحيات
-      const roles = await base44.entities.Role.filter({ 
+      const roles = await base44.entities.Role.filter({
         id: userRoleData.role_id,
         status: 'active'
       });
@@ -92,11 +92,11 @@ export function AuthProvider({ children }) {
   // A. التحقق من صلاحية معينة (includes() check)
   const hasPermission = (permission) => {
     if (!currentUser) return false;
-    
+
     // Admin له جميع الصلاحيات
     if (currentUser.role === 'admin') return true;
     if (rolePermissions.includes('*')) return true;
-    
+
     // A. Check Basic Permission - includes() check
     return rolePermissions.includes(permission);
   };
@@ -104,10 +104,10 @@ export function AuthProvider({ children }) {
   // B. الحصول على نطاق البيانات (switch(scope) logic)
   const getDataScope = (permission) => {
     if (!currentUser) return 'none';
-    
+
     // Admin له نطاق كامل
-    if (currentUser.role === 'admin') return 'all';
-    
+    if (currentUser.role === 'admin' || rolePermissions.includes('*')) return 'all';
+
     // B. Check Data Scope - Default to 'own' if undefined
     return dataScopes[permission] || 'own';
   };
@@ -115,35 +115,43 @@ export function AuthProvider({ children }) {
   // فلترة بيانات الموظفين حسب النطاق (Dynamic Lookup Method)
   const filterEmployees = (employees, permission) => {
     if (!currentUser) return [];
-    
+
     // Admin يرى الكل
-    if (currentUser.role === 'admin') return employees;
-    
-    // A. Check Basic Permission - includes() check
-    if (!rolePermissions.includes(permission)) {
+    if (currentUser.role === 'admin' || rolePermissions.includes('*')) return employees;
+
+    // A. Check Basic Permission - Array Support or single string
+    const permissionsToCheck = Array.isArray(permission) ? permission : [permission];
+
+    // Check if user has AT LEAST ONE of the requested permissions
+    const hasAnyPermission = permissionsToCheck.some(p => rolePermissions.includes(p));
+
+    if (!hasAnyPermission) {
       return []; // ACCESS DENIED
     }
-    
+
     // B. Check Data Scope - switch(scope) logic
-    const scopeValue = dataScopes[permission] || 'own'; // Default to 'own' if undefined
-    
+    // We get the data scope of the FIRST matched permission from the array
+    const matchedPermission = permissionsToCheck.find(p => rolePermissions.includes(p));
+    const scopeValue = dataScopes[matchedPermission] || 'own'; // Default to 'own' if undefined
+
     switch (scopeValue) {
       case 'all':
         return employees; // RETURN ALL RECORDS
-        
+
       case 'department':
         // Match Employee's Department
         if (!userEmployee) return [];
         return employees.filter(emp => emp.department === userEmployee.department);
-        
+
       case 'own':
         // Match Employee's Own ID (or Email)
         if (!userEmployee) return [];
-        return employees.filter(emp => 
-          emp.id === userEmployee.id || 
+        return employees.filter(emp =>
+          emp.id === userEmployee.id ||
           emp.email === currentUser.email
         );
-        
+
+
       default:
         return []; // Fail Safe
     }
@@ -152,12 +160,12 @@ export function AuthProvider({ children }) {
   // فلترة البيانات المرتبطة بموظفين (الحضور، الإجازات، إلخ) - Dynamic Filtering
   const filterEmployeeRelatedData = (data, employees, getEmployeeId) => {
     if (!currentUser) return [];
-    
+
     // Admin يرى الكل
-    if (currentUser.role === 'admin') return data;
-    
+    if (currentUser.role === 'admin' || rolePermissions.includes('*')) return data;
+
     if (!userEmployee) return [];
-    
+
     // فلترة البيانات بناءً على الموظفين المسموح بهم
     const allowedEmployeeIds = employees.map(e => e.id);
     return data.filter(item => {
@@ -170,22 +178,22 @@ export function AuthProvider({ children }) {
   const canEdit = (permission, item, getEmployeeId) => {
     if (!hasPermission(permission)) return false;
     if (currentUser?.role === 'admin') return true;
-    
+
     const scope = getDataScope(permission);
     if (scope === 'all') return true;
-    
+
     if (scope === 'own') {
       if (!userEmployee) return false;
       const itemEmployeeId = getEmployeeId(item);
       return itemEmployeeId === userEmployee.id;
     }
-    
+
     if (scope === 'department') {
       if (!userEmployee) return false;
       // سيتم التحقق في الصفحة الفردية
       return true;
     }
-    
+
     return false;
   };
 

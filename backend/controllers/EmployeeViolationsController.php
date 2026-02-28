@@ -13,7 +13,7 @@ class EmployeeViolationsController extends BaseController {
     protected $fillable = [
         'id', 'employee_id', 'violation_type_id', 'incident_date', 
         'occurrence_number', 'applied_action', 'applied_value', 
-        'status', 'letter_content', 'notes'
+        'status', 'letter_content', 'notes', 'workflow_id'
     ];
     
     protected $searchable = ['applied_action', 'notes'];
@@ -33,9 +33,10 @@ class EmployeeViolationsController extends BaseController {
         $stmt->execute([':id' => $userId]);
         $user = $stmt->fetch();
 
-        // Get user role for scoping
+        // Get user role and permissions for scoping
+        // Note: permissions are stored as a JSON string or comma-separated in the roles table
         $stmt = $this->db->prepare("
-            SELECT r.*, ur.employee_id 
+            SELECT r.permissions, ur.employee_id 
             FROM user_roles ur
             JOIN roles r ON ur.role_id = r.id
             WHERE ur.user_id = :user_id AND ur.status = 'active'
@@ -44,46 +45,72 @@ class EmployeeViolationsController extends BaseController {
         $stmt->execute([':user_id' => $userId]);
         $roleData = $stmt->fetch();
 
+        $permissionsData = $roleData['permissions'] ?? '';
+        $currentEmployeeId = $roleData['employee_id'] ?? null;
+
+        $permissions = [];
+        if (is_array($permissionsData)) {
+            $permissions = $permissionsData;
+        } else if (is_string($permissionsData) && !empty($permissionsData)) {
+            $permissions = json_decode($permissionsData, true) ?: [];
+        }
+
         $where = " WHERE 1=1 ";
         $params = [];
 
-        // Admin check (Global admin or HR admin role)
-        $isAdmin = ($user['email'] === 'admin@ivory.com' || (isset($roleData['permissions']) && (strpos($roleData['permissions'], 'view_all_violations') !== false || strpos($roleData['permissions'], 'all') !== false)));
+        // Scoping Logic: STRICT array checking! No more 'strpos' flaws!
+        $isAdmin = ($user['email'] === 'admin@ivory.com');
+        $canViewAll = $isAdmin || in_array('view_all_violations', $permissions) || in_array('*', $permissions) || in_array('all', $permissions);
+        $canViewDept = in_array('view_department_violations', $permissions);
 
-        if (!$isAdmin) {
-            $isDeptManager = (isset($roleData['permissions']) && strpos($roleData['permissions'], 'view_department_violations') !== false);
+        if ($canViewAll) {
+            // No extra filters for global view
+        } elseif ($canViewDept && $currentEmployeeId) {
+            // Get department of the current user
+            $stmt = $this->db->prepare("SELECT department FROM employees WHERE id = :id");
+            $stmt->execute([':id' => $currentEmployeeId]);
+            $userDept = $stmt->fetchColumn();
             
-            if ($isDeptManager && isset($roleData['employee_id'])) {
-                // Get department of the manager
-                $stmt = $this->db->prepare("SELECT department FROM employees WHERE id = :id");
-                $stmt->execute([':id' => $roleData['employee_id']]);
-                $dept = $stmt->fetchColumn();
-                
-                if ($dept) {
-                    $where .= " AND employee_id IN (SELECT id FROM employees WHERE department = :dept)";
-                    $params[':dept'] = $dept;
-                }
-            } else if (isset($roleData['employee_id'])) {
-                // Regular employee seeing own records
-                $where .= " AND employee_id = :emp_id";
-                $params[':emp_id'] = $roleData['employee_id'];
+            if ($userDept) {
+                // Must explicitly specify table alias e for employees
+                $where .= " AND e.department = :dept";
+                $params[':dept'] = $userDept;
             } else {
-                // No employee link, return nothing
-                $where .= " AND 1=0";
+                $where .= " AND t.employee_id = :emp_id";
+                $params[':emp_id'] = $currentEmployeeId;
             }
+        } elseif ($currentEmployeeId) {
+            // Regular employee: strictly own records
+            $where .= " AND t.employee_id = :emp_id";
+            $params[':emp_id'] = $currentEmployeeId;
+        } else {
+            // No link to employee, can't see anything (handled strictly)
+            $where .= " AND 1=0";
         }
 
-        // Parent index logic manually to support our custom where
+        // Pagination and sorting
         $page = max(1, intval($_GET['page'] ?? 1));
         $limit = min(1000, max(1, intval($_GET['limit'] ?? 100)));
         $offset = ($page - 1) * $limit;
         $order = (isset($_GET['order']) && strtoupper($_GET['order']) === 'ASC') ? 'ASC' : 'DESC';
 
-        $totalStmt = $this->db->prepare("SELECT COUNT(*) FROM `{$this->table}`" . $where);
+        // Count for pagination
+        $countSql = "SELECT COUNT(*) FROM `{$this->table}` t 
+                     LEFT JOIN employees e ON t.employee_id = e.id" . $where;
+        $totalStmt = $this->db->prepare($countSql);
         $totalStmt->execute($params);
         $total = $totalStmt->fetchColumn();
 
-        $stmt = $this->db->prepare("SELECT * FROM `{$this->table}`" . $where . " ORDER BY incident_date $order LIMIT $limit OFFSET $offset");
+        // Main Query - Must include workflow_id
+        $stmt = $this->db->prepare("
+            SELECT t.*, t.workflow_id, e.full_name as employee_name, vt.name as violation_name 
+            FROM `{$this->table}` t
+            LEFT JOIN employees e ON t.employee_id = e.id
+            LEFT JOIN violation_types vt ON t.violation_type_id = vt.id
+            " . $where . " 
+            ORDER BY t.incident_date $order 
+            LIMIT $limit OFFSET $offset
+        ");
         $stmt->execute($params);
         $data = array_map([$this, 'processRow'], $stmt->fetchAll());
 
@@ -91,6 +118,26 @@ class EmployeeViolationsController extends BaseController {
             'data' => $data,
             'pagination' => ['total' => (int)$total, 'page' => $page, 'limit' => $limit, 'pages' => ceil($total / $limit)]
         ];
+    }
+
+    /**
+     * Override show to include joined names and workflow_id so creating a new record returns all UI dependencies.
+     */
+    public function show($id) {
+        $stmt = $this->db->prepare("
+            SELECT t.*, t.workflow_id, e.full_name as employee_name, vt.name as violation_name 
+            FROM `{$this->table}` t
+            LEFT JOIN employees e ON t.employee_id = e.id
+            LEFT JOIN violation_types vt ON t.violation_type_id = vt.id
+            WHERE t.`{$this->primaryKey}` = :id
+        ");
+        $stmt->execute([':id' => $id]);
+        $data = $stmt->fetch();
+        if (!$data) {
+            http_response_code(404);
+            return ['error' => true, 'message' => 'Record not found'];
+        }
+        return $this->processRow($data);
     }
 
     /**
@@ -167,7 +214,7 @@ class EmployeeViolationsController extends BaseController {
             if ($violation && !isset($violation['error'])) {
                 // 5. Initiate Workflow
                 $workflowService = new WorkflowService();
-                $workflowResult = $workflowService->generateFlow('EmployeeViolation', $violation['id'], 'EmployeeViolation');
+                $workflowResult = $workflowService->generateFlow('EmployeeViolation', $violation['id'], 'EmployeeViolation', $employeeId);
                 
                 if ($workflowResult['status'] === 'success') {
                     $wfId = $workflowResult['approval_request_id'];

@@ -16,7 +16,7 @@ export function getCurrentPendingStep(steps) {
  * Get display label for a step (job_title or role_name)
  */
 function getStepTitle(step) {
-  return step.approver_job_title || step.role_name || `الخطوة ${step.step_order}`;
+  return step.approver_job_title || step.role_name || (step.approver_name ? 'المدير المباشر' : `الخطوة ${step.step_order}`);
 }
 
 /**

@@ -90,6 +90,7 @@ export default function Approvals() {
         switch (type) {
             case 'permission_requests': return 'طلب استئذان';
             case 'leaves': return 'طلب إجازة';
+            case 'EmployeeViolation': return 'مخالفة وجزاء';
             default: return type;
         }
     };

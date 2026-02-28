@@ -10,7 +10,7 @@ import { useAuth } from "@/components/AuthProvider";
  * Get display label for a step (job_title or role_name)
  */
 function getStepTitle(step) {
-    return step.approver_job_title || step.role_name || `الخطوة ${step.step_order}`;
+    return step.approver_job_title || step.role_arabic_name || step.role_name || (step.approver_name ? 'المدير المباشر' : `الخطوة ${step.step_order}`);
 }
 
 /**
@@ -43,15 +43,22 @@ export default function ApprovalTimeline({ approvalChain = [], workflowId = null
     }, [workflowId]);
 
     const fetchChain = async () => {
-        if (!workflowId || !currentUser) return;
+        if (!workflowId || !currentUser) {
+            console.log("⚠️ fetchChain skipped. Missing workflowId or currentUser:", { workflowId, currentUserId: currentUser?.id });
+            return;
+        }
         setLoading(true);
+        console.log(`📡 Fetching timeline for workflowId: ${workflowId}`);
         try {
             const res = await base44.entities.Workflow.action(workflowId, 'get-chain', { user_id: currentUser.id });
+            console.log("✅ Timeline API Response:", res);
             if (res.success) {
                 setInternalChain(res.data);
+            } else {
+                console.error("❌ Timeline API returned failure:", res);
             }
         } catch (error) {
-            console.error("Error fetching approval chain:", error);
+            console.error("❌ Error fetching approval chain:", error);
         }
         setLoading(false);
     };

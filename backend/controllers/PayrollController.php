@@ -236,6 +236,18 @@ class PayrollController extends BaseController {
         $insPerc = (float)($insSettings['employee_percentage'] ?? 0);
         $insMax = (float)($insSettings['max_insurable_salary'] ?? 0);
 
+        // 9. جلب المخالفات والجزاءات المعتمدة التي لم يتم خصمها بعد
+        $stmt = $this->db->prepare("
+            SELECT * FROM employee_violations 
+            WHERE employee_id = :eid AND status = 'applied'
+        ");
+        $stmt->execute([':eid' => $employeeId]);
+        $violations = $stmt->fetchAll();
+        
+        $violationDeductions = 0;
+        $processedViolations = [];
+        $violationNotes = "";
+
         // --- الحسابات المالية ---
         $basic = (float)$contract['basic_salary'];
         $housing = (float)($contract['housing_allowance'] ?? 0);
@@ -245,6 +257,22 @@ class PayrollController extends BaseController {
         $dailyRate = $basic / 30;
         $minuteRate = ($basic / 30 / 8) / 60;
 
+        foreach ($violations as $violation) {
+            $dedAmount = 0;
+            if ($violation['applied_action'] === 'deduction_amount') {
+                $dedAmount = (float)($violation['applied_value'] ?? 0);
+                $violationNotes .= "خصم جزاء: " . $dedAmount . " ريال. ";
+            } else if ($violation['applied_action'] === 'deduction_days') {
+                $dedDays = (float)($violation['applied_value'] ?? 0);
+                $dedAmount = $dedDays * $dailyRate;
+                $violationNotes .= "خصم جزاء: " . $dedDays . " أيام. ";
+            }
+            if ($dedAmount > 0) {
+                $violationDeductions += $dedAmount;
+                $processedViolations[] = $violation['id'];
+            }
+        }
+
         $absDed = ($absentDays + $unpaidLeaveDays + $terminationAbsence) * $dailyRate;
         $lateDed = $lateMinutes * $minuteRate;
         
@@ -252,7 +280,7 @@ class PayrollController extends BaseController {
         $insDed = ($insBase * $insPerc) / 100;
 
         $gross = $basic + $housing + $transport + $otherAlw + $additionalAllowances + $bonusesAmount + $overtimeAmount;
-        $totalDed = $insDed + $absDed + $lateDed;
+        $totalDed = $insDed + $absDed + $lateDed + $violationDeductions;
         $net = $gross - $totalDed;
 
         // توليد رقم المسير
@@ -275,7 +303,7 @@ class PayrollController extends BaseController {
             'insurance_deduction' => round($insDed, 2),
             'late_deduction' => round($lateDed, 2),
             'absence_deduction' => round($absDed, 2),
-            'other_deductions' => 0,
+            'other_deductions' => round($violationDeductions, 2),
             'total_deductions' => round($totalDed, 2),
             'net_salary' => round($net, 2),
             'currency' => $contract['currency'] ?? 'SAR',
@@ -287,10 +315,19 @@ class PayrollController extends BaseController {
             'overtime_hours' => round($overtimeHours, 2),
             'notes' => ($unpaidLeaveDays > 0 ? "خصم $unpaidLeaveDays يوم إجازة بدون راتب. " : "") . 
                        ($absentDays > 0 ? "خصم $absentDays يوم غياب. " : "") .
-                       ($terminationAbsence > 0 ? "تعديل راتب لنهاية الخدمة في " . $employee['termination_date'] . ". " : "")
+                       ($terminationAbsence > 0 ? "تعديل راتب لنهاية الخدمة في " . $employee['termination_date'] . ". " : "") .
+                       $violationNotes
         ];
 
-        return $this->store($payrollData);
+        $result = $this->store($payrollData);
+        
+        // تحديث حالة المخالفات المخصومة
+        if ($result && !empty($processedViolations)) {
+            $inIds = implode(',', array_map('intval', $processedViolations));
+            $this->db->query("UPDATE employee_violations SET status = 'deducted' WHERE id IN ($inIds)");
+        }
+        
+        return $result;
     }
 
     public function calculateAllPayroll($data) {

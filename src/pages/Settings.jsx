@@ -1385,6 +1385,7 @@ export default function Settings() {
                     <SelectItem value="PerformanceEvaluation">تقييم الأداء (PerformanceEvaluation)</SelectItem>
                     <SelectItem value="Payroll">فاتورة راتب فردية (Payroll)</SelectItem>
                     <SelectItem value="PayrollBatch">مسير رواتب - حزمة (PayrollBatch)</SelectItem>
+                    <SelectItem value="EmployeeViolation">المخالفات والجزاءات (Violation)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

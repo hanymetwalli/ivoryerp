@@ -16,10 +16,12 @@ class WorkflowService {
      */
     public function getRequestSteps($requestId) {
         $stmt = $this->db->prepare("
-            SELECT s.*, u.full_name as approver_name, r.name as role_name
+            SELECT s.*, u.full_name as approver_name, r.name as role_name, r.description as role_arabic_name,
+                   approver_emp.position as approver_job_title
             FROM approval_steps s
             LEFT JOIN users u ON s.approver_user_id = u.id
             LEFT JOIN roles r ON s.role_id = r.id
+            LEFT JOIN employees approver_emp ON approver_emp.email = u.email
             WHERE s.approval_request_id = :id
             ORDER BY s.step_order ASC
         ");
@@ -27,7 +29,7 @@ class WorkflowService {
         return $stmt->fetchAll();
     }
 
-    public function generateFlow($modelType, $modelId, $requestType) {
+    public function generateFlow($modelType, $modelId, $requestType, $employeeId = null) {
         $inTransaction = $this->db->inTransaction();
         try {
             if (!$inTransaction) $this->db->beginTransaction();
@@ -54,7 +56,8 @@ class WorkflowService {
             ]);
 
             // 3. جلب الموظف المرتبط بالطلب (لأتمتة جلب المدير المباشر)
-            $employeeId = $this->getEmployeeIdFromModel($modelType, $modelId);
+            // استخدام المعامل الممرر أولاً، وإن لم يوجد نحاول استنتاجه من الموديل
+            $employeeId = $employeeId ?: $this->getEmployeeIdFromModel($modelType, $modelId);
 
             // 4. نسخ خطوات القالب
             $stmt = $this->db->prepare("SELECT * FROM workflow_blueprint_steps WHERE blueprint_id = :bid ORDER BY step_order ASC");
@@ -309,17 +312,35 @@ class WorkflowService {
         
         if ($req) {
             $table = $req['model_type'];
+            
+            // Map entity names to table names if they differ
+            $tableName = $table;
+            if ($table === 'EmployeeViolation') {
+                $tableName = 'employee_violations';
+            }
         
             // Handle models that use 'approval_status' instead of 'status' for workflow tracking
             // Trainings also use 'approval_status' primarily as 'status' is an ENUM with limited values
             $statusColumn = ($table === 'contracts' || $table === 'employee_trainings') ? 'approval_status' : 'status';
             
-            error_log("UpdateModelStatus: Table $table, Column $statusColumn, ID {$req['model_id']}, Status $status");
-            
-            $stmt = $this->db->prepare("UPDATE `$table` SET `$statusColumn` = :status WHERE id = :id");
-            $success = $stmt->execute([':status' => $status, ':id' => $req['model_id']]);
+            // Map standard workflow statuses to performance_evaluations statues if needed
+            // (e.g., 'approved' -> 'completed' or 'approved')
 
-            error_log("Workflow update: Table $table, Column $statusColumn, ID {$req['model_id']}, Status $status, Success: " . ($success ? 'YES' : 'NO'));
+            // Custom Status Mappings before updating DB
+            $dbStatus = $status;
+            if ($table === 'EmployeeViolation' && $status === 'approved') {
+                $dbStatus = 'applied'; // Because 'approved' is not a valid enum value for employee_violations table
+            }
+            if ($table === 'EmployeeViolation' && $status === 'rejected') {
+                $dbStatus = 'revoked'; // In case is rejected
+            }
+            
+            error_log("UpdateModelStatus: Table $tableName (was $table), Column $statusColumn, ID {$req['model_id']}, Status $dbStatus");
+            
+            $stmt = $this->db->prepare("UPDATE `$tableName` SET `$statusColumn` = :status WHERE id = :id");
+            $success = $stmt->execute([':status' => $dbStatus, ':id' => $req['model_id']]);
+
+            error_log("Workflow update: Table $table, Column $statusColumn, ID {$req['model_id']}, Status $dbStatus, Success: " . ($success ? 'YES' : 'NO'));
 
             // Special case for employee_trainings: 
             if ($table === 'employee_trainings') {

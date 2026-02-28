@@ -517,12 +517,12 @@ export default function Payroll() {
       accessor: "actions",
       cell: (row) => (
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleOpenBatch(row)}>
+          <Button variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenBatch(row); }}>
             <Eye className="w-4 h-4 ml-1" />
             التفاصيل
           </Button>
           {(row.status === 'draft' || row.status === 'pending_approval') && hasPermission(PERMISSIONS.DELETE_PAYROLL) && (
-            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => { setSelectedBatch(row); setShowDeleteDialog(true); }}>
+            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedBatch(row); setShowDeleteDialog(true); }}>
               <Trash2 className="w-4 h-4" />
             </Button>
           )}
@@ -583,7 +583,7 @@ export default function Payroll() {
       header: "الإجراءات",
       accessor: "actions",
       cell: (row) => (
-        <Button variant="ghost" size="icon" onClick={() => handleView(row)}>
+        <Button variant="ghost" size="icon" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleView(row); }}>
           <Eye className="w-4 h-4" />
         </Button>
       ),

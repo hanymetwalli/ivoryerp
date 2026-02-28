@@ -149,6 +149,14 @@ class ApprovalsController extends BaseController {
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch();
+        } elseif ($modelType === 'EmployeeViolation') {
+            $sql = "SELECT ev.*, e.full_name as employee_name, ev.id as request_number
+                    FROM employee_violations ev
+                    LEFT JOIN employees e ON ev.employee_id = e.id
+                    WHERE ev.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
         }
         
         // يمكن إضافة أنواع أخرى لاحقاً (رواتب، إلخ)

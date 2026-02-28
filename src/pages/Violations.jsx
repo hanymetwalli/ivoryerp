@@ -59,28 +59,44 @@ export default function Violations() {
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
 
-    const { hasPermission, filterEmployees, currentUser } = useAuth();
+    const { hasPermission, filterEmployees, currentUser, loading: authLoading } = useAuth();
 
+    // Fetch data only after auth is ready
     useEffect(() => {
-        loadData();
-    }, []);
+        if (!authLoading && currentUser) {
+            fetchMetadata();
+            fetchViolations();
+        }
+    }, [authLoading, currentUser]);
 
-    const loadData = async () => {
-        setLoading(true);
+    const fetchMetadata = async () => {
         try {
-            const [vList, empList, vtList] = await Promise.all([
-                base44.entities.EmployeeViolation.list("-incident_date"),
+            const [empList, vtList] = await Promise.all([
                 base44.entities.Employee.list(),
                 base44.entities.ViolationType.list()
             ]);
 
-            setViolations(vList);
-            const allowedEmployees = filterEmployees(empList, PERMISSIONS.VIEW_ALL_VIOLATIONS);
+            const allowedEmployees = filterEmployees(empList, [
+                PERMISSIONS.VIEW_ALL_EMPLOYEES,
+                PERMISSIONS.VIEW_ALL_VIOLATIONS,
+                PERMISSIONS.VIEW_DEPARTMENT_VIOLATIONS
+            ]);
             setEmployees(allowedEmployees);
             setViolationTypes(vtList);
         } catch (error) {
+            console.error("Error loading metadata:", error);
+            toast.error("فشل تحميل بيانات الموظفين أو أنواع المخالفات");
+        }
+    };
+
+    const fetchViolations = async () => {
+        setLoading(true);
+        try {
+            const vList = await base44.entities.EmployeeViolation.list("-incident_date");
+            setViolations(vList);
+        } catch (error) {
             console.error("Error loading violations:", error);
-            toast.error("فشل تحميل البيانات");
+            toast.error("فشل تحميل سجل المخالفات");
         }
         setLoading(false);
     };
@@ -111,7 +127,7 @@ export default function Violations() {
                 await base44.entities.EmployeeViolation.create(formData);
                 toast.success("تم تسجيل المخالفة واحتساب الجزاء آلياً");
             }
-            loadData();
+            fetchViolations();
             setShowForm(false);
         } catch (error) {
             console.error("Error saving violation:", error);
@@ -130,13 +146,22 @@ export default function Violations() {
         setShowDetails(true);
     };
 
-    const handleForceApprove = async (id) => {
+    const handleForceApprove = async () => {
+        if (!selectedViolation?.workflow_id) {
+            toast.error("لا يوجد رقم مسار اعتماد لهذا السجل");
+            return;
+        }
+
         if (!confirm("هل أنت متأكد من رغبتك في الاعتماد النهائي الاستثنائي لهذه المخالفة؟")) return;
+
         try {
             const res = await base44.entities.Workflow.action(selectedViolation.workflow_id, 'force-approve', { user_id: currentUser.id });
             if (!res.success) throw new Error(res.error || "فشل الاعتماد");
+
             toast.success("تم الاعتماد النهائي بنجاح");
-            loadData();
+
+            // Refresh ONLY violations to prevent UI blinking/state loss of metadata
+            fetchViolations();
             setShowDetails(false);
         } catch (error) {
             toast.error("فشل الاعتماد: " + error.message);
@@ -148,7 +173,7 @@ export default function Violations() {
         try {
             await base44.entities.EmployeeViolation.delete(id);
             toast.success("تم الحذف بنجاح");
-            loadData();
+            fetchViolations();
         } catch (error) {
             toast.error("فشل الحذف");
         }
@@ -204,12 +229,12 @@ export default function Violations() {
         {
             header: "الموظف",
             accessor: "employee_id",
-            cell: (row) => getEmployeeName(row.employee_id)
+            cell: (row) => row.employee_name || getEmployeeName(row.employee_id)
         },
         {
             header: "المخالفة",
             accessor: "violation_type_id",
-            cell: (row) => getViolationName(row.violation_type_id)
+            cell: (row) => row.violation_name || getViolationName(row.violation_type_id)
         },
         {
             header: "التاريخ",
@@ -393,11 +418,11 @@ export default function Violations() {
                                 <CardContent className="space-y-3 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-slate-500">الموظف:</span>
-                                        <span className="font-medium">{getEmployeeName(selectedViolation.employee_id)}</span>
+                                        <span className="font-medium">{selectedViolation.employee_name || getEmployeeName(selectedViolation.employee_id)}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-slate-500">نوع المخالفة:</span>
-                                        <span className="font-medium text-red-600">{getViolationName(selectedViolation.violation_type_id)}</span>
+                                        <span className="font-medium text-red-600">{selectedViolation.violation_name || getViolationName(selectedViolation.violation_type_id)}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-slate-500">تاريخ الحادثة:</span>
