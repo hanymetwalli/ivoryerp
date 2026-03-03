@@ -10,11 +10,12 @@ class TrainingsController extends BaseController {
     
     // Updated fillable fields to include Approval Chain
     protected $fillable = [
-        'id', 'title', 'description', 'start_date', 'end_date', 'location', 
-        'provider', 'cost', 'status', 'approval_chain', 'current_level_idx', 'current_status_desc'
+        'id', 'name', 'description', 'start_date', 'end_date', 'location', 
+        'provider', 'cost', 'status', 'approval_chain', 'current_level_idx', 'current_status_desc',
+        'request_date'
     ];
     
-    protected $searchable = ['title', 'provider'];
+    protected $searchable = ['name', 'provider'];
     
     // Custom Actions for Approval
     public function customAction($id, $action, $data = null) {

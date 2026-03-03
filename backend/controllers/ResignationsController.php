@@ -9,9 +9,9 @@ class ResignationsController extends BaseController {
     protected $table = 'resignations';
     protected $fillable = [
         'id', 'request_number', 'employee_id', 'resignation_date', 'submission_date', 'end_of_service_date', 
-        'notice_period_days', 'last_working_day', 'reason', 
+        'notice_period_days', 'last_working_day', 'reason', 'notes',
         'status', 'handover_notes', 'exit_interview_notes',
-        'approval_chain', 'current_level_idx', 'current_status_desc'
+        'attachments', 'approval_chain', 'current_level_idx', 'current_status_desc'
     ];
     
     // Auto-generate request number and handle dates

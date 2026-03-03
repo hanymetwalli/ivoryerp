@@ -123,35 +123,23 @@ export default function PerformanceEvaluations() {
   };
 
   const handleForceApprove = async () => {
-    console.log("⚡ Starting Force Approve Diagnostic for Evaluation...");
-    console.log("Selected Record:", selectedEvaluation);
-
     if (!selectedEvaluation || !selectedEvaluation.workflow_id) {
-      console.error("❌ Diagnostic: Missing workflow_id", selectedEvaluation);
       toast.error("لم يتم العثور على سجل سير عمل لهذا التقييم");
       return;
     }
 
     setForceApproveLoading(true);
     try {
-      console.log(`📡 Sending customAction 'force-approve' to Workflow ID: ${selectedEvaluation.workflow_id}`);
-      console.log(`👤 User ID: ${authUser?.id}`);
-
-      const response = await base44.entities.Workflow.customAction(selectedEvaluation.workflow_id, 'force-approve', {
+      await base44.entities.Workflow.customAction(selectedEvaluation.workflow_id, 'force-approve', {
         user_id: authUser?.id
       });
 
-      console.log("✅ Diagnostic Response:", response);
       toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
       setShowForceApproveDialog(false);
-
-      console.log("🔄 Invalidating queries...");
       queryClient.invalidateQueries({ queryKey: ["performanceEvaluations"] });
-
-      console.log("🔃 Calling loadData()...");
       loadData();
     } catch (error) {
-      console.error("❌ Force approve diagnostic error:", error);
+      console.error("Force approve error:", error);
       toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
     setForceApproveLoading(false);
@@ -241,14 +229,13 @@ export default function PerformanceEvaluations() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => {
-                        console.log("⚡ Menu Item Clicked: Force Approve for Evaluation", row.evaluation_number || row.id);
                         setSelectedEvaluation(row);
                         setShowForceApproveDialog(true);
                       }}
                       className="text-blue-600 font-bold"
                     >
                       <CheckCircle className="w-4 h-4 ml-2" />
-                      الاعتماد النهائي الاستثنائي ⚡
+                      اعتماد نهائي استثنائي ⚡
                     </DropdownMenuItem>
                   </>
                 )}
@@ -377,8 +364,8 @@ export default function PerformanceEvaluations() {
           open={showForceApproveDialog}
           onClose={() => setShowForceApproveDialog(false)}
           onConfirm={handleForceApprove}
-          title="تأكيد الاعتماد النهائي الاستثنائي"
-          description="هل أنت متأكد من الاعتماد المباشر لهذا التقييم؟ سيتم تخطي الخطوات المتبقية واعتماده باسمك كمدير للنظام."
+          title="الاعتماد النهائي الاستثنائي ⚡"
+          description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
           confirmLabel="تأكيد الاعتماد ⚡"
           cancelLabel="إلغاء"
           variant="destructive"

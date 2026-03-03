@@ -25,14 +25,31 @@ class PayrollController extends BaseController {
         $month = $params['month'] ?? date('n');
         $year = $params['year'] ?? date('Y');
         
+        $where = " WHERE p.month = :month AND p.year = :year ";
+        $sqlParams = [':month' => $month, ':year' => $year];
+        
+        if (!empty($params['department_id'])) {
+            // Check by ID or Name (to be robust)
+            $where .= " AND (e.department = :dept_id OR e.department = :dept_name) ";
+            $sqlParams[':dept_id'] = $params['department_id'];
+            
+            $stmt = $this->db->prepare("SELECT name FROM departments WHERE id = ?");
+            $stmt->execute([$params['department_id']]);
+            $sqlParams[':dept_name'] = $stmt->fetchColumn() ?: $params['department_id'];
+        }
+        
+        if (!empty($params['currency'])) {
+            $where .= " AND p.currency = :currency ";
+            $sqlParams[':currency'] = $params['currency'];
+        }
+        
         $sql = "SELECT p.*, e.full_name as employee_name, e.employee_number
                 FROM payroll p
-                LEFT JOIN employees e ON p.employee_id = e.id
-                WHERE p.month = :month AND p.year = :year
+                LEFT JOIN employees e ON p.employee_id = e.id " . $where . "
                 ORDER BY e.full_name";
         
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([':month' => $month, ':year' => $year]);
+        $stmt->execute($sqlParams);
         $data = $stmt->fetchAll();
         
         $totals = [
@@ -52,7 +69,7 @@ class PayrollController extends BaseController {
         return [
             'data' => $data,
             'totals' => $totals,
-            'filters' => ['month' => $month, 'year' => $year]
+            'filters' => ['month' => $month, 'year' => $year, 'department_id' => $params['department_id'] ?? null, 'currency' => $params['currency'] ?? null]
         ];
     }
     
@@ -67,7 +84,7 @@ class PayrollController extends BaseController {
             case 'mark-paid':
                 return $this->update($id, ['status' => 'paid']);
             case 'generate-batch':
-                return $this->generateBatch($data['month'], $data['year']);
+                return $this->generateBatch($data['month'], $data['year'], $data);
             default:
                 return parent::customAction($id, $action, $data);
         }
@@ -201,7 +218,7 @@ class PayrollController extends BaseController {
         $stmt = $this->db->prepare("
             SELECT SUM(hours) as total_hours, SUM(total_amount) as total_val 
             FROM overtime 
-            WHERE employee_id = :eid AND status = 'approved'
+            WHERE employee_id = :eid AND status = 'approved' AND report_status = 'approved'
             AND date BETWEEN :start AND :end
         ");
         $stmt->execute([':eid' => $employeeId, ':start' => $monthStart, ':end' => $monthEnd]);
@@ -333,20 +350,29 @@ class PayrollController extends BaseController {
     public function calculateAllPayroll($data) {
         $month = $data['month'] ?? date('n');
         $year = $data['year'] ?? date('Y');
+        $deptId = $data['department_id'] ?? null;
+        $currency = $data['currency'] ?? null;
         
         $monthStart = sprintf('%04d-%02d-01', $year, $month);
-        $stmt = $this->db->prepare("
-            SELECT id FROM employees 
-            WHERE status = 'active'
-               OR (status = 'terminated' AND (termination_date IS NULL OR termination_date >= :mstart))
-        ");
-        $stmt->execute([':mstart' => $monthStart]);
-        $employees = $stmt->fetchAll();
+        $where = " WHERE (status = 'active' OR (status = 'terminated' AND (termination_date IS NULL OR termination_date >= :mstart))) ";
+        $sqlParams = [':mstart' => $monthStart];
+        
+        if ($deptId) {
+            $where .= " AND (department = :dept_id OR department = :dept_name) ";
+            $sqlParams[':dept_id'] = $deptId;
+            $stmt = $this->db->prepare("SELECT name FROM departments WHERE id = ?");
+            $stmt->execute([$deptId]);
+            $sqlParams[':dept_name'] = $stmt->fetchColumn() ?: $deptId;
+        }
+        
+        $stmt = $this->db->prepare("SELECT id FROM employees " . $where);
+        $stmt->execute($sqlParams);
+        $employeesList = $stmt->fetchAll();
         
         $success = 0; $errors = [];
-        foreach ($employees as $emp) {
+        foreach ($employeesList as $emp) {
             try {
-                $this->calculatePayroll(['employee_id' => $emp['id'], 'month' => $month, 'year' => $year]);
+                $this->calculatePayroll(['employee_id' => $emp['id'], 'month' => $month, 'year' => $year, 'currency' => $currency]);
                 $success++;
             } catch (Exception $e) {
                 $errors[] = ['id' => $emp['id'], 'error' => $e->getMessage()];
@@ -356,15 +382,21 @@ class PayrollController extends BaseController {
         return ['message' => 'تمت العملية', 'calculated' => $success, 'errors' => $errors];
     }
 
-    public function generateBatch($month, $year) {
+    public function generateBatch($month, $year, $filters = []) {
         $month = intval($month);
         $year = intval($year);
+        $deptId = $filters['department_id'] ?? null;
+        $currency = $filters['currency'] ?? null;
 
-        // 1. التحقق من عدم وجود حزمة مسبقة
-        $stmt = $this->db->prepare("SELECT id FROM payroll_batches WHERE month = ? AND year = ?");
-        $stmt->execute([$month, $year]);
-        if ($stmt->fetch()) {
-            return ['success' => false, 'error' => "تم توليد مسير رواتب لهذا الشهر مسبقاً (" . $month . "/" . $year . ")"];
+        // 1. التحقق من عدم وجود حزمة مسبقة للفلاتر المحددة (إذا لم تكن هناك فلاتر، نمنع التكرار الكلي)
+        // ملاحظة: للسماح بتوليد قسم بعد قسم، يجب تعديل منطق الحزم لتكون جزئية أو تضمين الفلتر في الحزمة
+        // هنا سنتبع المنطق البسيط: إذا لم تكن هناك فلاتر، نمنع التكرار.
+        if (!$deptId && !$currency) {
+            $stmt = $this->db->prepare("SELECT id FROM payroll_batches WHERE month = ? AND year = ? AND (filters IS NULL OR filters = '')");
+            $stmt->execute([$month, $year]);
+            if ($stmt->fetch()) {
+                return ['success' => false, 'error' => "تم توليد مسير رواتب شامل لهذا الشهر مسبقاً (" . $month . "/" . $year . ")"];
+            }
         }
 
         try {
@@ -372,37 +404,59 @@ class PayrollController extends BaseController {
 
             // 2. إنشاء سجل الحزمة الجديد
             $batchId = $this->generateUUID();
-            $stmt = $this->db->prepare("INSERT INTO payroll_batches (id, month, year, status) VALUES (?, ?, ?, 'draft')");
-            $stmt->execute([$batchId, $month, $year]);
+            $filtersJson = !empty($filters) ? json_encode($filters, JSON_UNESCAPED_UNICODE) : null;
+            $stmt = $this->db->prepare("INSERT INTO payroll_batches (id, month, year, status, filters) VALUES (?, ?, ?, 'draft', ?)");
+            $stmt->execute([$batchId, $month, $year, $filtersJson]);
 
-            // 3. جلب الموظفين الذين لديهم عقود نشطة
-            $stmt = $this->db->prepare("SELECT employee_id FROM contracts WHERE status = 'active'");
-            $stmt->execute();
-            $contracts = $stmt->fetchAll();
+            // 3. جلب الموظفين الذين لديهم عقود نشطة وتطابق الفلاتر
+            $where = " WHERE c.status = 'active' ";
+            $sqlParams = [];
+            
+            if ($deptId) {
+                $where .= " AND (e.department = :dept_id OR e.department = :dept_name) ";
+                $sqlParams[':dept_id'] = $deptId;
+                $stmtDept = $this->db->prepare("SELECT name FROM departments WHERE id = ?");
+                $stmtDept->execute([$deptId]);
+                $sqlParams[':dept_name'] = $stmtDept->fetchColumn() ?: $deptId;
+            }
+            
+            if ($currency) {
+                $where .= " AND c.currency = :currency ";
+                $sqlParams[':currency'] = $currency;
+            }
+
+            $stmt = $this->db->prepare("
+                SELECT c.employee_id 
+                FROM contracts c 
+                JOIN employees e ON c.employee_id = e.id 
+                $where
+            ");
+            $stmt->execute($sqlParams);
+            $contractsList = $stmt->fetchAll();
 
             $totalAmount = 0;
             $count = 0;
 
-            foreach ($contracts as $contract) {
+            foreach ($contractsList as $contractRow) {
                 try {
-                    $result = $this->calculatePayroll([
-                        'employee_id' => $contract['employee_id'],
+                    $res = $this->calculatePayroll([
+                        'employee_id' => $contractRow['employee_id'],
                         'month' => $month,
                         'year' => $year,
                         'batch_id' => $batchId
                     ]);
 
-                    if ($result && isset($result['id'])) {
+                    if ($res && isset($res['id'])) {
                         // جلب صافي الراتب المولد للإجمالي
                         $stmt = $this->db->prepare("SELECT net_salary FROM payroll WHERE id = ?");
-                        $stmt->execute([$result['id']]);
-                        $payroll = $stmt->fetch();
-                        $totalAmount += (float)$payroll['net_salary'];
+                        $stmt->execute([$res['id']]);
+                        $payrollItem = $stmt->fetch();
+                        $totalAmount += (float)$payrollItem['net_salary'];
                         $count++;
                     }
                 } catch (Exception $e) {
                     // تخطي الموظف إذا حدث خطأ في حسابه والاستمرار في الباقي
-                    error_log("Error generating payroll for employee {$contract['employee_id']} in batch $batchId: " . $e->getMessage());
+                    error_log("Error generating payroll for employee {$contractRow['employee_id']} in batch $batchId: " . $e->getMessage());
                 }
             }
 

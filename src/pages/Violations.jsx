@@ -38,7 +38,8 @@ import { ar } from "date-fns/locale";
 import { PERMISSIONS } from "@/components/permissions";
 import { useAuth } from "@/components/AuthProvider";
 import ApprovalTimeline from "@/components/workflows/ApprovalTimeline";
-import { ShieldCheck, Info, Trash2, Edit, Clock } from "lucide-react";
+import { ShieldCheck, Info, Trash2, Edit, Clock, CheckCircle } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export default function Violations() {
     const [violations, setViolations] = useState([]);
@@ -47,6 +48,7 @@ export default function Violations() {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [showLetterModal, setShowLetterModal] = useState(false);
+    const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
     const [selectedViolation, setSelectedViolation] = useState(null);
     const [approvalChain, setApprovalChain] = useState([]);
     const [formData, setFormData] = useState({
@@ -136,6 +138,24 @@ export default function Violations() {
         setSaving(false);
     };
 
+    const handleForceApprove = async () => {
+        if (!selectedViolation?.workflow_id) return;
+        setSaving(true);
+        try {
+            await base44.entities.Workflow.customAction(selectedViolation.workflow_id, 'force-approve', {
+                user_id: currentUser.id
+            });
+            toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
+            fetchViolations(); // Changed loadData() to fetchViolations()
+            setShowDetails(false); // Changed setShowViewModal(false) to setShowDetails(false)
+            setShowForceApproveDialog(false);
+        } catch (error) {
+            console.error("Error force approving:", error);
+            toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
+        }
+        setSaving(false);
+    };
+
     const handleViewLetter = (violation) => {
         setSelectedViolation(violation);
         setShowLetterModal(true);
@@ -144,28 +164,6 @@ export default function Violations() {
     const handleViewDetails = (violation) => {
         setSelectedViolation(violation);
         setShowDetails(true);
-    };
-
-    const handleForceApprove = async () => {
-        if (!selectedViolation?.workflow_id) {
-            toast.error("لا يوجد رقم مسار اعتماد لهذا السجل");
-            return;
-        }
-
-        if (!confirm("هل أنت متأكد من رغبتك في الاعتماد النهائي الاستثنائي لهذه المخالفة؟")) return;
-
-        try {
-            const res = await base44.entities.Workflow.action(selectedViolation.workflow_id, 'force-approve', { user_id: currentUser.id });
-            if (!res.success) throw new Error(res.error || "فشل الاعتماد");
-
-            toast.success("تم الاعتماد النهائي بنجاح");
-
-            // Refresh ONLY violations to prevent UI blinking/state loss of metadata
-            fetchViolations();
-            setShowDetails(false);
-        } catch (error) {
-            toast.error("فشل الاعتماد: " + error.message);
-        }
     };
 
     const handleDelete = async (id) => {
@@ -267,24 +265,44 @@ export default function Violations() {
             header: "الإجراءات",
             accessor: "actions",
             cell: (row) => (
-                <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => handleViewDetails(row)} title="تفاصيل">
-                        <Info className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleViewLetter(row)} title="خطاب">
-                        <FileText className="w-4 h-4" />
-                    </Button>
-                    {hasPermission(PERMISSIONS.UPDATE_VIOLATION) && row.status === 'pending_approval' && (
-                        <Button variant="ghost" size="sm" onClick={() => { setFormData(row); setShowForm(true); }} title="تعديل">
-                            <Edit className="w-4 h-4" />
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">فتح القائمة</span>
+                            <MoreVertical className="h-4 w-4" />
                         </Button>
-                    )}
-                    {hasPermission(PERMISSIONS.DELETE_VIOLATION) && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(row.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50" title="حذف">
-                            <Trash2 className="w-4 h-4" />
-                        </Button>
-                    )}
-                </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewDetails(row)}>
+                            <Info className="w-4 h-4 ml-2" /> تفاصيل
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewLetter(row)}>
+                            <FileText className="w-4 h-4 ml-2" /> خطاب
+                        </DropdownMenuItem>
+                        {hasPermission(PERMISSIONS.UPDATE_VIOLATION) && row.status === 'pending_approval' && (
+                            <DropdownMenuItem onClick={() => { setFormData(row); setShowForm(true); }}>
+                                <Edit className="w-4 h-4 ml-2" /> تعديل
+                            </DropdownMenuItem>
+                        )}
+                        {hasPermission(PERMISSIONS.DELETE_VIOLATION) && (
+                            <DropdownMenuItem onClick={() => handleDelete(row.id)} className="text-red-600">
+                                <Trash2 className="w-4 h-4 ml-2" /> حذف
+                            </DropdownMenuItem>
+                        )}
+                        {hasPermission(PERMISSIONS.FORCE_APPROVE) && row.status === 'pending_approval' && (
+                            <DropdownMenuItem
+                                onClick={() => {
+                                    setSelectedViolation(row);
+                                    setShowForceApproveDialog(true);
+                                }}
+                                className="text-blue-600 font-bold"
+                            >
+                                <CheckCircle className="w-4 h-4 ml-2" />
+                                اعتماد نهائي استثنائي ⚡
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
             )
         }
     ];
@@ -436,15 +454,6 @@ export default function Violations() {
                                     </div>
                                 </CardContent>
                             </Card>
-
-                            {hasPermission(PERMISSIONS.FORCE_APPROVE) && selectedViolation.status === 'pending_approval' && (
-                                <Button
-                                    className="w-full gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-                                    onClick={() => handleForceApprove(selectedViolation.id)}
-                                >
-                                    <ShieldCheck className="w-4 h-4" /> اعتماد نهائي مباشر ⚡
-                                </Button>
-                            )}
                         </div>
 
                         <div className="md:col-span-2 space-y-4">
@@ -467,6 +476,17 @@ export default function Violations() {
                     </div>
                 )}
             </FormModal>
+
+            <ConfirmDialog
+                open={showForceApproveDialog}
+                onClose={() => setShowForceApproveDialog(false)}
+                onConfirm={handleForceApprove}
+                title="الاعتماد النهائي الاستثنائي ⚡"
+                description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
+                confirmLabel="تأكيد الاعتماد ⚡"
+                variant="primary"
+                loading={saving}
+            />
         </div>
     );
 }

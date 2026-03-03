@@ -26,6 +26,8 @@ const statusStyles = {
   enrolled: "bg-yellow-100 text-yellow-700 border-yellow-200",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200",
   planned: "bg-blue-100 text-blue-700 border-blue-200",
+  force_approved: "bg-blue-100 text-blue-700 border-blue-200",
+  resigned: "bg-orange-100 text-orange-700 border-orange-200",
 };
 
 const statusLabels = {
@@ -34,10 +36,11 @@ const statusLabels = {
   pending: "قيد الانتظار",
   approved: "معتمد",
   rejected: "مرفوض",
-  returned: "مُرجع للمراجعة",
+  returned: "مُعاد بملاحظة",
   manager_approved: "موافقة المدير",
   gm_approved: "موافقة المدير العام",
   hr_approved: "معتمد من الموارد البشرية",
+  force_approved: "اعتماد نهائي استثنائي ⚡",
   draft: "مسودة",
   pending_review: "قيد المراجعة",
   paid: "مدفوع",
@@ -53,6 +56,7 @@ const statusLabels = {
   enrolled: "مسجل",
   cancelled: "ملغي",
   planned: "مستقبلي",
+  resigned: "مستقيل",
 };
 
 export default function StatusBadge({ status, customLabel = null, className = "" }) {

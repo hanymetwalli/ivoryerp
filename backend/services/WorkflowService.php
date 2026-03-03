@@ -34,13 +34,14 @@ class WorkflowService {
         try {
             if (!$inTransaction) $this->db->beginTransaction();
 
-            // 1. جلب القالب النشط
+            // 1. جلب القالب النشط (Support Fallback for OvertimeReport to use OvertimeRequest template)
+            $templateType = ($requestType === 'OvertimeReport') ? 'OvertimeRequest' : $requestType;
             $stmt = $this->db->prepare("SELECT id FROM workflow_blueprints WHERE request_type = :type AND is_active = 1 LIMIT 1");
-            $stmt->execute([':type' => $requestType]);
+            $stmt->execute([':type' => $templateType]);
             $blueprint = $stmt->fetch();
 
             if (!$blueprint) {
-                throw new Exception("لا يوجد قالب نشط لهذا النوع من الطلبات: " . $requestType);
+                throw new Exception("لا يوجد قالب نشط لهذا النوع من الطلبات: templateType=$templateType (requestType=$requestType)");
             }
 
             // 2. إنشاء طلب الاعتماد
@@ -317,11 +318,18 @@ class WorkflowService {
             $tableName = $table;
             if ($table === 'EmployeeViolation') {
                 $tableName = 'employee_violations';
+            } elseif ($table === 'OvertimeReport') {
+                $tableName = 'overtime';
             }
         
             // Handle models that use 'approval_status' instead of 'status' for workflow tracking
             // Trainings also use 'approval_status' primarily as 'status' is an ENUM with limited values
-            $statusColumn = ($table === 'contracts' || $table === 'employee_trainings') ? 'approval_status' : 'status';
+            $statusColumn = 'status';
+            if ($table === 'contracts' || $table === 'employee_trainings') {
+                $statusColumn = 'approval_status';
+            } elseif ($table === 'OvertimeReport') {
+                $statusColumn = 'report_status';
+            }
             
             // Map standard workflow statuses to performance_evaluations statues if needed
             // (e.g., 'approved' -> 'completed' or 'approved')
@@ -387,7 +395,14 @@ class WorkflowService {
                 $this->handlePermissionFinalApproval($permission);
             }
         } elseif ($modelType === 'overtime') {
-            // خطاف الاعتماد النهائي للساعات الإضافية
+            // خطاف الاعتماد النهائي للساعات الإضافية (مبدئي)
+            // الآن نُغير حالة التقرير إلى pending ليُطالب الموظف برفعه
+            $stmt = $this->db->prepare("UPDATE overtime SET report_status = 'pending' WHERE id = :id AND status = 'approved'");
+            $stmt->execute([':id' => $modelId]);
+        } elseif ($modelType === 'OvertimeReport') {
+            // خطاف الاعتماد النهائي لتقرير الساعات الإضافية
+            $this->db->prepare("UPDATE overtime SET report_status = 'approved' WHERE id = :id")->execute([':id' => $modelId]);
+
             // إضافة مبلغ الساعات الإضافية كمكافأة على الراتب
             $stmt = $this->db->prepare("SELECT * FROM overtime WHERE id = :id");
             $stmt->execute([':id' => $modelId]);
@@ -412,24 +427,37 @@ class WorkflowService {
             $this->db->prepare("UPDATE employee_trainings SET status = 'completed', approval_status = 'approved' WHERE id = :id")
                      ->execute([':id' => $modelId]);
             error_log("Training request $modelId fully approved and status updated to 'completed'.");
-        } elseif ($modelType === 'resignations') {
+        } elseif ($modelType === 'resignations' || $modelType === 'ResignationRequest') {
             // خطاف الاعتماد النهائي للاستقالات
             $stmt = $this->db->prepare("SELECT * FROM resignations WHERE id = :id");
             $stmt->execute([':id' => $modelId]);
             $resignation = $stmt->fetch();
 
             if ($resignation) {
-                // تحديث حالة الموظف وتاريخ نهاية الخدمة
-                // المنطق الإداري: عند الاعتماد النهائي للاستقالة، يجب تحديث حقل status للموظف إلى 'resigned'
+                $employeeId = $resignation['employee_id'];
+                // تاريخ إنهاء الخدمة الفعلي
                 $terminationDate = $resignation['last_working_day'] ?? $resignation['end_of_service_date'] ?? date('Y-m-d');
                 
+                // 1. تحديث حالة الموظف وتاريخ نهاية الخدمة
+                // المنطق الإداري: عند الاعتماد النهائي للاستقالة، يجب تحديث حقل status للموظف إلى 'resigned'
                 $this->db->prepare("UPDATE employees SET status = 'resigned', termination_date = :tdate WHERE id = :eid")
                          ->execute([
                              ':tdate' => $terminationDate,
-                             ':eid' => $resignation['employee_id']
+                             ':eid' => $employeeId
                          ]);
                          
-                error_log("Employee {$resignation['employee_id']} status updated to 'resigned' due to approved resignation $modelId. Termination date: $terminationDate");
+                // 2. [متطلب إداري حاسم] إنهاء العقد النشط لهذا الموظف
+                // البحث عن العقد النشط الخاص بهذا الموظف في جدول contracts
+                $this->db->prepare("
+                    UPDATE contracts 
+                    SET status = 'expired', end_date = :end_date 
+                    WHERE employee_id = :eid AND status = 'active'
+                ")->execute([
+                    ':end_date' => $terminationDate,
+                    ':eid' => $employeeId
+                ]);
+
+                error_log("Resignation Approved: Employee {$employeeId} set to 'resigned', Active Contract set to 'expired' as of $terminationDate");
             }
         } elseif ($modelType === 'performance_evaluations') {
             // Final approval hook for performance evaluations
@@ -736,7 +764,14 @@ class WorkflowService {
 
     private function getEmployeeIdFromModel($modelType, $modelId) {
         try {
-            $stmt = $this->db->prepare("SELECT employee_id FROM `$modelType` WHERE id = :id");
+            // Map model types to actual table names
+            $tableName = $modelType;
+            if ($modelType === 'OvertimeReport') {
+                $tableName = 'overtime';
+            } elseif ($modelType === 'EmployeeViolation') {
+                $tableName = 'employee_violations';
+            }
+            $stmt = $this->db->prepare("SELECT employee_id FROM `$tableName` WHERE id = :id");
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch()['employee_id'] ?? null;
         } catch (Exception $e) {

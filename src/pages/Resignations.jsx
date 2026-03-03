@@ -311,7 +311,7 @@ export default function Resignations() {
               عرض التفاصيل
             </DropdownMenuItem>
 
-            {(row.workflow_status === 'returned' || row.status === 'draft') && (
+            {(row.workflow_status === 'returned' || row.status === 'draft' || row.workflow_status === 'pending') && (
               <>
                 <DropdownMenuItem onClick={() => handleEdit(row)}>
                   <Edit className="w-4 h-4 ml-2" />
@@ -337,7 +337,7 @@ export default function Resignations() {
                   className="text-blue-600 font-bold"
                 >
                   <CheckCircle className="w-4 h-4 ml-2" />
-                  الاعتماد النهائي ⚡
+                  اعتماد نهائي استثنائي ⚡
                 </DropdownMenuItem>
               </>
             )}
@@ -349,7 +349,7 @@ export default function Resignations() {
 
   return (
     <ProtectedRoute permission={PERMISSIONS.VIEW_ALL_EMPLOYEES} fallback={<div className="p-8 text-center text-gray-500">لا تملك صلاحية الوصول لهذه الصفحة</div>}>
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">طلبات الاستقالة</h2>
@@ -526,9 +526,9 @@ export default function Resignations() {
           size="xl"
         >
           {selectedItem && (
-            <div className="space-y-6">
+            <div className="space-y-6" dir="rtl">
               {/* Status Banner */}
-              {pendingStep && (
+              {pendingStep && pendingStep.role_name && (
                 <div className={`p-4 rounded-lg flex items-center justify-between ${isApprover ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-full ${isApprover ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -672,8 +672,8 @@ export default function Resignations() {
           open={showForceApproveDialog}
           onClose={() => setShowForceApproveDialog(false)}
           onConfirm={handleForceApprove}
-          title="تأكيد الاعتماد النهائي الاستثنائي"
-          description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+          title="الاعتماد النهائي الاستثنائي ⚡"
+          description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
           confirmLabel="تأكيد الاعتماد ⚡"
           cancelLabel="إلغاء"
           variant="destructive"

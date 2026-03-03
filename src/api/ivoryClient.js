@@ -26,6 +26,11 @@ async function apiCall(endpoint, options = {}) {
         },
     };
 
+    // Remove Content-Type if body is FormData (browser will set it with boundary)
+    if (config.body instanceof FormData) {
+        delete config.headers['Content-Type'];
+    }
+
     try {
         const response = await fetch(url, config);
         const data = await response.json();
@@ -134,9 +139,10 @@ class Entity {
     // Generic action handler
     async action(id, action, data = {}) {
         const url = `${this.endpoint}/${id}/${action}`;
+        const isFormData = data instanceof FormData;
         const result = await apiCall(url, {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: isFormData ? data : JSON.stringify(data),
         });
         // Normalize response to always have 'success' and 'data'
         if (result && result.error) {
@@ -159,6 +165,7 @@ class Functions {
             'importFingerprintLogsSimple': { endpoint: 'attendance', action: 'import-fingerprint' },
             'createUserDirectly': { endpoint: 'users', action: 'create-directly' },
             'generateEngineeringPDF': { endpoint: 'development-logs', action: 'generate-pdf' },
+            'processApproval': { endpoint: 'approvals', action: 'process' },
         };
 
         const mapping = functionMap[name];
@@ -314,8 +321,118 @@ const ivoryClient = {
         }
     },
 
+    // Integrations namespace (matches base44 v2 structure)
+    integrations: {
+        Core: {
+            // Upload file to local PHP backend
+            UploadFile: async ({ file }) => {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${API_BASE_URL}/upload.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Upload failed');
+                }
+
+                return await response.json();
+            },
+
+            // Real extraction for CSV files (used in Employees.jsx import)
+            ExtractDataFromUploadedFile: async ({ file_url, json_schema }) => {
+                try {
+                    // Fetch the file content
+                    const response = await fetch(file_url);
+                    if (!response.ok) throw new Error('Failed to fetch file for extraction');
+
+                    const content = await response.text();
+                    const isCsv = file_url.toLowerCase().endsWith('.csv') || content.includes(',');
+
+                    if (isCsv) {
+                        const lines = content.split(/\r?\n/).filter(line => line.trim());
+                        if (lines.length < 2) return { status: 'success', output: { data: [] } };
+
+                        const headers = lines[0].split(',').map(h => h.trim());
+                        const data = [];
+
+                        const headerMap = {
+                            'رقم الموظف': 'employee_number',
+                            'الاسم الكامل': 'full_name',
+                            'رقم الهوية': 'id_number',
+                            'رقم الجوال': 'phone',
+                            'الجوال': 'phone',
+                            'البريد الإلكتروني': 'email',
+                            'المنصب': 'position',
+                            'القسم': 'department',
+                            'مكان العمل': 'location_type',
+                            'تاريخ التعيين': 'hire_date',
+                            'الجنسية': 'nationality',
+                            'الجنس': 'gender',
+                            'النوع': 'gender',
+                            'الحالة': 'status'
+                        };
+
+                        const valueMap = {
+                            gender: {
+                                'ذكر': 'male',
+                                'أنثى': 'female'
+                            },
+                            status: {
+                                'نشط': 'active',
+                                'غير نشط': 'inactive',
+                                'مفسوخ': 'terminated',
+                                'منتهي': 'expired'
+                            }
+                        };
+
+                        for (let i = 1; i < lines.length; i++) {
+                            const values = lines[i].split(',');
+                            const entry = {};
+                            headers.forEach((header, index) => {
+                                const key = headerMap[header] || header;
+                                let value = values[index]?.trim();
+
+                                // Map values if needed
+                                if (valueMap[key] && valueMap[key][value]) {
+                                    value = valueMap[key][value];
+                                }
+
+                                entry[key] = value;
+                            });
+                            data.push(entry);
+                        }
+
+                        return {
+                            status: 'success',
+                            output: { data }
+                        };
+                    }
+
+                    console.warn('[Mock] Non-CSV extraction not implemented.');
+                    return { status: 'success', output: { data: [] } };
+
+                } catch (error) {
+                    console.error('Extraction error:', error);
+                    return { status: 'error', error: error.message };
+                }
+            }
+        }
+    },
+
     // Alias for service role (same as regular in local)
     asServiceRole: null,
+};
+
+// Add specific functions requested for Overtime
+ivoryClient.entities.Overtime.submitReport = async function (id, data) {
+    return await this.action(id, 'submit-report', data);
 };
 
 // Set asServiceRole to reference the same entities

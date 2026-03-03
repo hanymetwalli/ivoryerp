@@ -4,6 +4,14 @@
  */
 
 function getRequestBody() {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+    
+    // For multipart/form-data (file uploads), use $_POST instead of php://input
+    if (stripos($contentType, 'multipart/form-data') !== false) {
+        error_log("[getRequestBody] Multipart detected. _POST keys: " . implode(',', array_keys($_POST)));
+        return $_POST;
+    }
+    
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
     return $data ?? [];

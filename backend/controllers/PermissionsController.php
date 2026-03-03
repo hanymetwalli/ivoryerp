@@ -168,10 +168,10 @@ class PermissionsController extends BaseController {
             $validation = $this->validateMonthlyBalance($employeeId, $requestDate, $newDuration);
 
             if (!$validation['isValid']) {
-                http_response_code(422);
+                http_response_code(400);
                 return [
                     'error' => true, 
-                    'message' => "عذراً، هذا الطلب يتجاوز رصيد الاستئذان الشهري المسموح به. (الحد المسموح: {$validation['limit_minutes']} دقيقة، المستهلك: {$validation['consumed_minutes']} دقيقة، المتبقي: {$validation['remaining_minutes']} دقيقة).",
+                    'message' => 'عفواً، لقد تجاوزت الحد الأقصى للاستئذان (4 ساعات) المسموح بها شهرياً',
                     'details' => [
                         'limit_minutes' => $validation['limit_minutes'],
                         'consumed_minutes' => $validation['consumed_minutes'],
@@ -267,10 +267,10 @@ class PermissionsController extends BaseController {
             $validation = $this->validateMonthlyBalance($employeeId, $requestDate, $newDuration, $id);
 
             if (!$validation['isValid']) {
-                http_response_code(422);
+                http_response_code(400);
                 return [
                     'error' => true, 
-                    'message' => "عذراً، هذا التعديل يتجاوز رصيد الاستئذان الشهري المسموح به. (الحد المسموح: {$validation['limit_minutes']} دقيقة، المستهلك: {$validation['consumed_minutes']} دقيقة، المتبقي: {$validation['remaining_minutes']} دقيقة).",
+                    'message' => 'عفواً، لقد تجاوزت الحد الأقصى للاستئذان (4 ساعات) المسموح بها شهرياً',
                     'details' => [
                         'limit_minutes' => $validation['limit_minutes'],
                         'consumed_minutes' => $validation['consumed_minutes'],

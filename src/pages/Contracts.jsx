@@ -42,12 +42,11 @@ import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ApprovalTimeline from "@/components/ApprovalTimeline";
-import ApprovalActions from "@/components/ApprovalActions";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { hasPermission, PERMISSIONS } from "@/components/permissions";
+import { hasPermission as hasPermissionAsync, PERMISSIONS } from "@/components/permissions";
 import { useAuth } from "@/components/AuthProvider";
 
 const CURRENCY_LABELS = {
@@ -76,7 +75,7 @@ export default function Contracts() {
   const {
     currentUser,
     userEmployee,
-    hasPermission: authHasPermission, // Renamed to avoid conflict with local hasPermission
+    hasPermission,
     filterEmployees,
     filterEmployeeRelatedData,
     loading: authLoading
@@ -211,23 +210,21 @@ export default function Contracts() {
   };
 
   const handleForceApprove = async () => {
-    if (!selectedContract || !selectedContract.workflow_id) {
-      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
-      return;
-    }
+    if (!selectedContract?.workflow_id) return;
     setForceApproveLoading(true);
     try {
-      await base44.entities.Workflow.customAction(selectedContract.workflow_id, 'force-approve', { user_id: currentUser.id });
-      toast.success("تم الاعتماد النهائي بنجاح");
-      loadData(); // Reload data to reflect changes
+      await base44.entities.Workflow.customAction(selectedContract.workflow_id, 'force-approve', {
+        user_id: currentUser.id
+      });
+      toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
+      loadData();
+      setShowViewModal(false);
       setShowForceApproveDialog(false);
-      setShowViewModal(false); // Close view modal after action
     } catch (error) {
-      console.error("Error during force approval:", error);
-      toast.error("حدث خطأ أثناء الاعتماد النهائي: " + error.message);
-    } finally {
-      setForceApproveLoading(false);
+      console.error("Error force approving:", error);
+      toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
+    setForceApproveLoading(false);
   };
 
   const handleSubmit = async () => {
@@ -356,7 +353,11 @@ export default function Contracts() {
       accessor: "status",
       cell: (row) => (
         <div className="flex flex-col gap-1">
-          <StatusBadge status={row.approval_status || row.status} />
+          <StatusBadge status={
+            (row.approval_status === 'approved' || !row.approval_status)
+              ? row.status
+              : row.approval_status
+          } />
           {row.approval_status === 'returned' && (
             <Button
               variant="ghost"
@@ -406,7 +407,7 @@ export default function Contracts() {
                     className="text-blue-600 font-bold"
                   >
                     <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي ⚡
+                    اعتماد نهائي استثنائي ⚡
                   </DropdownMenuItem>
                 </>
               )}
@@ -640,31 +641,8 @@ export default function Contracts() {
               </h3>
 
               <ApprovalTimeline
-                modelId={selectedContract.id}
-                modelType="contracts"
+                approvalChain={selectedContract.approval_steps}
               />
-
-              <div className="flex justify-end gap-3 mt-4">
-                <ApprovalActions
-                  modelId={selectedContract.id}
-                  modelType="contracts"
-                  onActionComplete={() => {
-                    queryClient.invalidateQueries({ queryKey: ["contracts"] });
-                    loadData();
-                  }}
-                />
-
-                {hasPermission(PERMISSIONS.FORCE_APPROVE) && selectedContract.approval_status === 'pending' && (
-                  <Button
-                    onClick={() => setShowForceApproveDialog(true)}
-                    variant="outline"
-                    className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 font-bold"
-                  >
-                    <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي الاستثنائي ⚡
-                  </Button>
-                )}
-              </div>
             </div>
           )}
         </div>
@@ -674,9 +652,9 @@ export default function Contracts() {
         open={showForceApproveDialog}
         onClose={() => setShowForceApproveDialog(false)}
         onConfirm={handleForceApprove}
-        title="الاعتماد النهائي الاستثنائي"
-        description="هل أنت متأكد من رغبتك في تجاوز جميع خطوات الموافقة واعتماد هذا العقد نهائياً؟"
-        confirmLabel="نعم، اعتماد"
+        title="الاعتماد النهائي الاستثنائي ⚡"
+        description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
+        confirmLabel="تأكيد الاعتماد ⚡"
         cancelLabel="تراجع"
         variant="destructive"
         loading={forceApproveLoading}
@@ -773,18 +751,6 @@ export default function Contracts() {
               </div>
             </div>
 
-            {(selectedContract.approval_status === 'pending' || selectedContract.status === 'pending') && (
-              <div className="border-t pt-4">
-                <ApprovalActions
-                  entityName="contracts"
-                  recordId={selectedContract.id}
-                  onApproved={() => {
-                    setShowViewModal(false);
-                    loadData();
-                  }}
-                />
-              </div>
-            )}
 
             {selectedContract.approval_steps?.length > 0 && (
               <div className="border-t pt-4">

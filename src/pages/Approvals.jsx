@@ -9,7 +9,8 @@ import {
     Clock,
     User,
     Calendar,
-    AlertCircle
+    AlertCircle,
+    Paperclip
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,6 +92,11 @@ export default function Approvals() {
             case 'permission_requests': return 'طلب استئذان';
             case 'leaves': return 'طلب إجازة';
             case 'EmployeeViolation': return 'مخالفة وجزاء';
+            case 'overtime': return 'ساعات إضافية';
+            case 'OvertimeReport': return 'تقرير عمل إضافي';
+            case 'contracts': return 'عقد موظف';
+            case 'employee_trainings': return 'تسجيل دورة تدريبية';
+            case 'resignations': return 'طلب استقالة';
             default: return type;
         }
     };
@@ -180,12 +186,30 @@ export default function Approvals() {
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-gray-500 font-normal">التاريخ</Label>
+                                    <Label className="text-gray-500 font-normal">تاريخ الطلب</Label>
                                     <div className="flex items-center gap-1 text-sm">
                                         <Calendar className="w-3 h-3" />
-                                        {selectedStep.details?.request_date}
+                                        {(() => {
+                                            const dateValue = selectedStep.details?.request_date || selectedStep.details?.created_at || selectedStep.request_created_at;
+                                            if (!dateValue) return '-';
+                                            try {
+                                                return format(parseISO(dateValue), "dd/MM/yyyy", { locale: ar });
+                                            } catch (e) {
+                                                return dateValue;
+                                            }
+                                        })()}
                                     </div>
                                 </div>
+
+                                {(selectedStep.model_type === 'overtime' || selectedStep.model_type === 'OvertimeReport') && selectedStep.details?.hours && (
+                                    <div className="space-y-1">
+                                        <Label className="text-gray-500 font-normal">عدد الساعات</Label>
+                                        <div className="flex items-center gap-1 text-sm">
+                                            <Clock className="w-3 h-3 text-blue-500" />
+                                            {selectedStep.details?.hours} ساعة إضافية
+                                        </div>
+                                    </div>
+                                )}
 
                                 {selectedStep.model_type === 'permission_requests' && (
                                     <>
@@ -206,6 +230,34 @@ export default function Approvals() {
                                             </p>
                                         </div>
                                     </>
+                                )}
+
+                                {selectedStep.model_type === 'OvertimeReport' && selectedStep.details?.report_content && (
+                                    <div className="space-y-1 col-span-2 mt-2">
+                                        <Label className="text-gray-500 font-normal text-blue-800 flex items-center gap-2">
+                                            <MessageSquare className="w-4 h-4" /> تقرير مهمة العمل المنجزة
+                                        </Label>
+                                        <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-200 text-sm leading-relaxed whitespace-pre-wrap text-gray-800">
+                                            {selectedStep.details.report_content}
+                                        </div>
+                                        {selectedStep.details?.report_attachment && (
+                                            <div className="mt-3">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="border-blue-200 text-blue-700 bg-white hover:bg-blue-50 flex items-center gap-2"
+                                                    onClick={() => {
+                                                        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost/ivory_hr/v4/32/backend';
+                                                        const baseUrl = apiBase.replace('/backend', '').replace('/api', '');
+                                                        window.open(`${baseUrl}/${selectedStep.details.report_attachment}`, '_blank');
+                                                    }}
+                                                >
+                                                    <Paperclip className="w-4 h-4" />
+                                                    عرض المرفق
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
@@ -235,7 +287,7 @@ export default function Approvals() {
                             onClick={() => handleSubmitAction('rejected')}
                         >
                             <XCircle className="w-5 h-5" />
-                            رفض الطلب
+                            مرفوض
                         </Button>
                         <Button
                             variant="outline"
@@ -244,7 +296,7 @@ export default function Approvals() {
                             onClick={() => handleSubmitAction('returned')}
                         >
                             <RotateCcw className="w-5 h-5" />
-                            إرجاع للمراجعة
+                            مُعاد بملاحظة
                         </Button>
                         <Button
                             className="bg-[#7c3238] hover:bg-[#5a252a] text-white flex items-center justify-center gap-2 py-6"
@@ -252,7 +304,7 @@ export default function Approvals() {
                             onClick={() => handleSubmitAction('approved')}
                         >
                             <CheckCircle className="w-5 h-5" />
-                            اعتماد الطلب
+                            معتمد
                         </Button>
                     </DialogFooter>
                 </DialogContent>

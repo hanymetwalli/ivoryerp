@@ -150,23 +150,18 @@ export default function Bonuses() {
   };
 
   const handleForceApprove = async () => {
-    if (!selectedBonus || !selectedBonus.workflow_id) {
-      toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
-      return;
-    }
-
+    if (!selectedBonus?.workflow_id) return;
     setForceApproveLoading(true);
     try {
       await base44.entities.Workflow.customAction(selectedBonus.workflow_id, 'force-approve', {
         user_id: currentUser.id
       });
-
       toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
-      setShowForceApproveDialog(false);
-      queryClient.invalidateQueries({ queryKey: ["bonuses"] });
       loadData();
+      setShowViewModal(false);
+      setShowForceApproveDialog(false);
     } catch (error) {
-      console.error("Force approve error:", error);
+      console.error("Error force approving:", error);
       toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
     setForceApproveLoading(false);
@@ -362,7 +357,7 @@ export default function Bonuses() {
                     className="text-blue-600 font-bold"
                   >
                     <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي ⚡
+                    اعتماد نهائي استثنائي ⚡
                   </DropdownMenuItem>
                 </>
               )}
@@ -716,7 +711,7 @@ export default function Bonuses() {
         onClose={() => setShowForceApproveDialog(false)}
         onConfirm={handleForceApprove}
         title="الاعتماد النهائي الاستثنائي ⚡"
-        description={`هل أنت متأكد من رغبتك في استخدام صلاحية الاعتماد الاستثنائي لهذا الطلب؟ سيتم تجاهل بقية خطوات سير العمل واعتماد الطلب فوراً.`}
+        description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
         confirmLabel="تأكيد الاعتماد ⚡"
         variant="primary"
         loading={forceApproveLoading}

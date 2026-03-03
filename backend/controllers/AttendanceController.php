@@ -93,7 +93,18 @@ class AttendanceController extends BaseController {
         if (!$schedule) return $metrics;
 
         // 1. Calculate Late Status
-        if ($schedule['type'] === 'fixed' && !empty($schedule['start_time'])) {
+        if ($schedule['type'] === 'flexible') {
+            // Flexible Window: 2 hours from scheduled start
+            $scheduledStart = $schedule['start_time'] ?: '08:00:00';
+            $scheduledStartTs = strtotime("$date $scheduledStart");
+            $flexibleLimitTs = $scheduledStartTs + (120 * 60); // 2-hour window
+            $actualInTs = strtotime("$date $inTime");
+
+            if ($actualInTs > $flexibleLimitTs) {
+                $metrics['is_late'] = 1;
+                $metrics['late_minutes'] = floor(($actualInTs - $flexibleLimitTs) / 60);
+            }
+        } elseif ($schedule['type'] === 'fixed' && !empty($schedule['start_time'])) {
             $scheduledStart = $schedule['start_time']; 
             $grace = $schedule['grace_period'];
             
@@ -117,10 +128,17 @@ class AttendanceController extends BaseController {
             }
             
             $metrics['working_hours'] = round(($outTs - $inTs) / 3600, 2);
-            $shiftDuration = $schedule['total_hours'];
+            $requiredHours = (float)$schedule['total_hours'];
             
-            if ($metrics['working_hours'] > $shiftDuration) {
-                $metrics['overtime_hours'] = $metrics['working_hours'] - $shiftDuration;
+            // For flexible shifts, we enforce the required hours (net)
+            if ($schedule['type'] === 'flexible' && $metrics['working_hours'] < $requiredHours) {
+                $deficitMinutes = ($requiredHours - $metrics['working_hours']) * 60;
+                $metrics['is_late'] = 1;
+                $metrics['late_minutes'] += floor($deficitMinutes);
+            }
+
+            if ($metrics['working_hours'] > $requiredHours) {
+                $metrics['overtime_hours'] = $metrics['working_hours'] - $requiredHours;
             }
         }
 

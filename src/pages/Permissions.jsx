@@ -20,7 +20,7 @@ import {
     DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/AuthProvider";
-import { hasPermission, PERMISSIONS } from "@/components/permissions";
+import { hasPermission as hasPermissionAsync, PERMISSIONS } from "@/components/permissions";
 import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -46,7 +46,7 @@ export default function Permissions() {
     const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
     const [forceApproveLoading, setForceApproveLoading] = useState(false);
 
-    const { currentUser } = useAuth();
+    const { currentUser, hasPermission } = useAuth();
 
     const canEdit = currentUser?.role === 'admin' || currentUser?.hr_role === 'manager';
     const canDelete = currentUser?.role === 'admin' || currentUser?.hr_role === 'manager';
@@ -116,22 +116,21 @@ export default function Permissions() {
     };
 
     const handleForceApprove = async () => {
-        if (!selectedPermission || !selectedPermission.workflow_id) {
+        if (!selectedPermission?.workflow_id) {
             toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
             return;
         }
-
         setForceApproveLoading(true);
         try {
             await base44.entities.Workflow.customAction(selectedPermission.workflow_id, 'force-approve', {
                 user_id: currentUser.id
             });
-
             toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
-            setShowForceApproveDialog(false);
             loadData();
+            setShowViewModal(false);
+            setShowForceApproveDialog(false);
         } catch (error) {
-            console.error("Force approve error:", error);
+            console.error("Error force approving:", error);
             toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
         }
         setForceApproveLoading(false);
@@ -234,15 +233,14 @@ export default function Permissions() {
                                 <>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation();
+                                        onClick={() => {
                                             setSelectedPermission(row);
                                             setShowForceApproveDialog(true);
                                         }}
                                         className="text-blue-600 font-bold"
                                     >
                                         <CheckCircle className="w-4 h-4 ml-2" />
-                                        الاعتماد النهائي ⚡
+                                        اعتماد نهائي استثنائي ⚡
                                     </DropdownMenuItem>
                                 </>
                             )}
@@ -514,7 +512,7 @@ export default function Permissions() {
                 onClose={() => setShowForceApproveDialog(false)}
                 onConfirm={handleForceApprove}
                 title="تأكيد الاعتماد النهائي الاستثنائي"
-                description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+                description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
                 confirmLabel="تأكيد الاعتماد ⚡"
                 cancelLabel="إلغاء"
                 variant="destructive"

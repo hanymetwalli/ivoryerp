@@ -148,7 +148,7 @@ class LeavesController extends BaseController {
             if (!empty($data['employee_id']) && !empty($data['leave_type_id']) && !empty($data['start_date'])) {
                 // Fetch employee joining date and leave type paid status
                 $stmt = $this->db->prepare("
-                    SELECT e.date_of_joining, lt.is_paid 
+                    SELECT e.date_of_joining, lt.is_paid, lt.code 
                     FROM employees e, leave_types lt 
                     WHERE e.id = :eid AND lt.id = :ltid
                 ");
@@ -164,11 +164,12 @@ class LeavesController extends BaseController {
                     $interval = $joiningDate->diff($startDate);
                     $daysSinceJoining = $interval->invert ? -$interval->days : $interval->days;
 
-                    if ($ruleData['is_paid'] && $daysSinceJoining < 180) {
-                        http_response_code(422);
+                    // 180-Day Rule: Only for Paid leaves, excluding Sick leaves ('SICK')
+                    if ($ruleData['is_paid'] && $ruleData['code'] !== 'SICK' && $daysSinceJoining < 180) {
+                        http_response_code(400);
                         return [
                             'error' => true, 
-                            'message' => 'عفواً، لا يمكن طلب إجازة مدفوعة الأجر قبل مرور 6 أشهر على تاريخ التعيين. يُسمح فقط بالإجازات غير المدفوعة'
+                            'message' => 'لا يحق للموظف طلب إجازة مدفوعة قبل إتمام 6 أشهر من تاريخ المباشرة'
                         ];
                     }
                 }

@@ -149,12 +149,18 @@ class EmployeeViolationsController extends BaseController {
             $violationTypeId = $data['violation_type_id'];
             $incidentDate = $data['incident_date'] ?? date('Y-m-d');
             
-            // 1. Calculate Occurrence Number
+            // 1. Calculate Occurrence Number (Restricted to the same calendar year)
             $stmt = $this->db->prepare("
                 SELECT COUNT(*) FROM `employee_violations` 
-                WHERE employee_id = :emp_id AND violation_type_id = :v_id
+                WHERE employee_id = :emp_id 
+                AND violation_type_id = :v_id
+                AND YEAR(incident_date) = YEAR(:incident_date)
             ");
-            $stmt->execute([':emp_id' => $employeeId, ':v_id' => $violationTypeId]);
+            $stmt->execute([
+                ':emp_id' => $employeeId, 
+                ':v_id' => $violationTypeId,
+                ':incident_date' => $incidentDate
+            ]);
             $count = (int)$stmt->fetchColumn();
             $occurrenceNumber = $count + 1;
             $data['occurrence_number'] = $occurrenceNumber;

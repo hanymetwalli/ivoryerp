@@ -44,6 +44,16 @@ abstract class BaseController {
                 $sqlParams[':search'] = '%' . $params['search'] . '%';
             }
             
+            // Generic attribute filtering
+            foreach ($params as $key => $value) {
+                if ($value !== '' && $value !== null && $key !== 'search' && $key !== 'page' && $key !== 'limit' && $key !== 'sort' && $key !== 'order') {
+                    if (in_array($key, $this->fillable)) {
+                        $where .= " AND `{$key}` = :filter_{$key}";
+                        $sqlParams[":filter_{$key}"] = $value;
+                    }
+                }
+            }
+            
             $countStmt = $this->db->prepare("SELECT COUNT(*) as total FROM `{$this->table}`" . $where);
             $countStmt->execute($sqlParams);
             $totalRow = $countStmt->fetch();

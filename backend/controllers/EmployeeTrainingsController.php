@@ -16,7 +16,8 @@ if (!class_exists('EmployeeTrainingsController')) {
             'id', 'request_number', 'employee_id', 'training_id', 
             'start_date', 'end_date', 'approval_status', 'status', 
             'requires_finance_approval', 'notes',
-            'approval_chain', 'current_level_idx', 'current_status_desc', 'approval_history'
+            'approval_chain', 'current_level_idx', 'current_status_desc', 'approval_history',
+            'request_date'
         ];
         
         // Default Sort field
@@ -31,8 +32,13 @@ if (!class_exists('EmployeeTrainingsController')) {
                 if (empty($data['request_number'])) {
                     $data['request_number'] = $this->generateRequestNumber('TRN');
                 }
+
+                // 2. تعيين تاريخ الطلب
+                if (empty($data['request_date'])) {
+                    $data['request_date'] = date('Y-m-d');
+                }
     
-                // 2. تعيين الحالة الأولية
+                // 3. تعيين الحالة الأولية
                 $data['approval_status'] = 'pending';
     
                 // 3. حفظ السجل

@@ -61,6 +61,10 @@ export default function Overtime() {
   const [showApprovalForm, setShowApprovalForm] = useState(null);
   const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
   const [forceApproveLoading, setForceApproveLoading] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportContent, setReportContent] = useState("");
+  const [reportAttachment, setReportAttachment] = useState(null);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const {
     currentUser,
@@ -173,6 +177,52 @@ export default function Overtime() {
       toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
     setForceApproveLoading(false);
+  };
+
+  const handleOpenReportModal = (row) => {
+    setSelectedOvertime(row);
+    setReportContent(row.report_content || "");
+    setReportAttachment(null);
+    setShowReportModal(true);
+  };
+
+  const handleReportSubmit = async () => {
+    if (!reportContent.trim()) {
+      toast.error("يرجى كتابة التقرير قبل التقديم");
+      return;
+    }
+    setReportSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append("report_content", reportContent);
+      if (reportAttachment) {
+        fd.append("attachment", reportAttachment);
+      }
+
+      console.log("[Report Submit] Sending FormData for overtime id:", selectedOvertime.id);
+      const result = await base44.entities.Overtime.submitReport(selectedOvertime.id, fd);
+      console.log("[Report Submit] Response:", result);
+
+      if (result && result.success === false) {
+        throw new Error(result.error || "فشل في حفظ التقرير");
+      }
+
+      // ✅ النجاح فقط: أغلق النافذة وحدّث الجدول
+      toast.success("تم رفع التقرير بنجاح وإرساله للاعتماد ✅");
+      setShowReportModal(false);
+      setReportContent("");
+      setReportAttachment(null);
+      await loadData();
+    } catch (err) {
+      // 🔴 لا تغلق النافذة! اعرض الخطأ بوضوح
+      console.error("🔴 [Report Submit] FULL ERROR:", err);
+      console.error("🔴 [Report Submit] Response Data:", err.response?.data || "N/A");
+      console.error("🔴 [Report Submit] Status:", err.response?.status || "N/A");
+      const backendError = err.response?.data?.error || err.response?.data?.message || err.message;
+      toast.error(backendError || "حدث خطأ أثناء الحفظ. راجع الكونسول!");
+    } finally {
+      setReportSubmitting(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -382,7 +432,23 @@ export default function Overtime() {
     {
       header: "الحالة",
       accessor: "status",
-      cell: (row) => <StatusBadge status={row.status} />,
+      cell: (row) => (
+        <div className="flex flex-col gap-1 items-start">
+          <StatusBadge status={row.status} />
+          {row.report_status && row.report_status !== 'none' && (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full inline-block text-center whitespace-nowrap
+              ${row.report_status === 'pending' ? 'bg-amber-100 text-amber-800' :
+                row.report_status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                  row.report_status === 'approved' ? 'bg-green-100 text-green-800' :
+                    'bg-red-100 text-red-800'}`}
+            >
+              {row.report_status === 'pending' ? 'بانتظار التقرير' :
+                row.report_status === 'submitted' ? 'التقرير قيد المراجعة' :
+                  row.report_status === 'approved' ? 'التقرير معتمد' : 'التقرير مرفوض'}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       header: "الإجراءات",
@@ -390,7 +456,7 @@ export default function Overtime() {
       cell: (row) => {
         const canEditRow = hasPermission(PERMISSIONS.EDIT_OVERTIME);
         const canDeleteRow = hasPermission(PERMISSIONS.DELETE_OVERTIME);
-        const isOwner = row.employee_id === currentUser?.employee_id;
+        const isOwner = userEmployee ? row.employee_id === userEmployee.id : false;
         const isPending = row.status === "pending";
         const isReturned = row.status === "returned";
         const allowEdit = canEditRow || (isOwner && (isPending || isReturned));
@@ -420,6 +486,12 @@ export default function Overtime() {
                   حذف
                 </DropdownMenuItem>
               )}
+              {row.status === 'approved' && (!row.report_status || row.report_status === 'none' || row.report_status === 'pending' || row.report_status === '') && isOwner && (
+                <DropdownMenuItem onClick={() => handleOpenReportModal(row)} className="text-blue-600 font-bold">
+                  <Upload className="w-4 h-4 ml-2" />
+                  رفع تقرير المهمة
+                </DropdownMenuItem>
+              )}
               {hasPermission(PERMISSIONS.FORCE_APPROVE) && (row.status === 'pending' || row.workflow_status === 'pending') && (
                 <>
                   <DropdownMenuSeparator />
@@ -431,7 +503,7 @@ export default function Overtime() {
                     className="text-blue-600 font-bold"
                   >
                     <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي ⚡
+                    اعتماد نهائي استثنائي ⚡
                   </DropdownMenuItem>
                 </>
               )}
@@ -776,6 +848,38 @@ export default function Overtime() {
         )}
       </FormModal>
 
+      {/* ===== نافذة تقديم التقرير ===== */}
+      <FormModal
+        open={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        title="تقرير الساعات الإضافية"
+        onSubmit={handleReportSubmit}
+        loading={reportSubmitting}
+        submitText="تقديم التقرير"
+      >
+        <div className="space-y-4" dir="rtl">
+          <div className="p-3 bg-blue-50 text-blue-800 rounded-lg text-sm border border-blue-200">
+            يرجى كتابة تقرير مفصل عما تم إنجازه خلال الساعات الإضافية. لن يتم احتساب الساعات في الرواتب حتى يتم اعتماد هذا التقرير.
+          </div>
+          <div>
+            <Label>محتوى التقرير *</Label>
+            <Textarea
+              rows={5}
+              value={reportContent}
+              onChange={(e) => setReportContent(e.target.value)}
+              placeholder="اكتب التقرير هنا..."
+            />
+          </div>
+          <div>
+            <Label>المرفقات (اختياري)</Label>
+            <Input
+              type="file"
+              onChange={(e) => setReportAttachment(e.target.files[0])}
+            />
+          </div>
+        </div>
+      </FormModal>
+
       {/* ===== نافذة الاستيراد ===== */}
       <FormModal open={showImportModal} onClose={() => setShowImportModal(false)} title="استيراد الساعات الإضافية" showFooter={false}>
         <div className="space-y-4" dir="rtl">
@@ -808,8 +912,8 @@ export default function Overtime() {
         open={showForceApproveDialog}
         onClose={() => setShowForceApproveDialog(false)}
         onConfirm={handleForceApprove}
-        title="تأكيد الاعتماد النهائي الاستثنائي"
-        description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
+        title="الاعتماد النهائي الاستثنائي ⚡"
+        description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
         confirmLabel="تأكيد الاعتماد ⚡"
         cancelLabel="إلغاء"
         variant="destructive"

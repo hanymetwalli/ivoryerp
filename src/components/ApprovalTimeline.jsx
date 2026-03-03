@@ -130,9 +130,9 @@ export default function ApprovalTimeline({ approvalChain = [] }) {
                     {/* Status Badge & Actor */}
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {isApproved && <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded">تم الاعتماد</span>}
+                        {isApproved && <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded">معتمد</span>}
                         {isRejected && <span className="text-xs font-medium text-red-700 bg-red-100 px-2 py-0.5 rounded">مرفوض</span>}
-                        {isReturned && <span className="text-xs font-medium text-orange-700 bg-orange-100 px-2 py-0.5 rounded">مُرجع</span>}
+                        {isReturned && <span className="text-xs font-medium text-orange-700 bg-orange-100 px-2 py-0.5 rounded">مُعاد بملاحظة</span>}
                         {isPending && isCurrentStep && <span className="text-xs text-blue-600 font-medium animate-pulse">جاري الانتظار...</span>}
                         {isPending && !isCurrentStep && <span className="text-xs text-gray-400">في الانتظار...</span>}
 

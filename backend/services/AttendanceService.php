@@ -38,27 +38,80 @@ class AttendanceService {
             'is_ramadan' => false
         ];
 
-        // Apply Ramadan overrides if applicable
+        // 1. Check if Ramadan overrides are explicitly set in the schedule
+        $ramadanActive = false;
         if ($schedule['ramadan_start_date'] && $schedule['ramadan_end_date']) {
             $ramadanStart = new DateTime($schedule['ramadan_start_date']);
             $ramadanEnd = new DateTime($schedule['ramadan_end_date']);
-            
             if ($currentDate >= $ramadanStart && $currentDate <= $ramadanEnd) {
-                $active['is_ramadan'] = true;
-                if ($schedule['ramadan_start_time']) $active['start_time'] = $schedule['ramadan_start_time'];
-                if ($schedule['ramadan_end_time']) $active['end_time'] = $schedule['ramadan_end_time'];
-                if ($schedule['ramadan_total_hours']) $active['total_hours'] = (float)$schedule['ramadan_total_hours'];
-                else if ($schedule['ramadan_start_time'] && $schedule['ramadan_end_time']) {
-                    // Recalculate total hours if only times provided for Ramadan
-                    $start = new DateTime($schedule['ramadan_start_time']);
-                    $end = new DateTime($schedule['ramadan_end_time']);
-                    $interval = $start->diff($end);
-                    $active['total_hours'] = round($interval->h + ($interval->i / 60), 2);
+                $ramadanActive = true;
+            }
+        } 
+        
+        // 2. Fallback: Check country-aware Ramadan window if not explicitly set or not active yet
+        if (!$ramadanActive) {
+            $country = $this->getCountryForEmployee($employeeId);
+            $configs = [
+                'Egypt'  => ['start' => '2026-02-18', 'end' => '2026-03-19', 'hours' => 6.00],
+                'KSA'    => ['start' => '2026-02-18', 'end' => '2026-03-19', 'hours' => 6.00],
+                'Jordan' => ['start' => '2026-02-18', 'end' => '2026-03-19', 'hours' => 6.00],
+                'Turkey' => ['start' => '2026-02-18', 'end' => '2026-03-19', 'hours' => 6.00],
+            ];
+            
+            if (isset($configs[$country])) {
+                $cfg = $configs[$country];
+                $ramadanStart = new DateTime($cfg['start']);
+                $ramadanEnd = new DateTime($cfg['end']);
+                
+                if ($currentDate >= $ramadanStart && $currentDate <= $ramadanEnd) {
+                    $ramadanActive = true;
+                    // Apply default Ramadan hours if not set in schedule
+                    if (!$schedule['ramadan_total_hours']) {
+                        $active['total_hours'] = $cfg['hours'];
+                    }
                 }
             }
         }
 
+        // 3. Apply overrides if Ramadan is active
+        if ($ramadanActive) {
+            $active['is_ramadan'] = true;
+            if ($schedule['ramadan_start_time']) $active['start_time'] = $schedule['ramadan_start_time'];
+            if ($schedule['ramadan_end_time']) $active['end_time'] = $schedule['ramadan_end_time'];
+            if ($schedule['ramadan_total_hours']) $active['total_hours'] = (float)$schedule['ramadan_total_hours'];
+            else if ($schedule['ramadan_start_time'] && $schedule['ramadan_end_time']) {
+                $start = new DateTime($schedule['ramadan_start_time']);
+                $end = new DateTime($schedule['ramadan_end_time']);
+                $interval = $start->diff($end);
+                $active['total_hours'] = round($interval->h + ($interval->i / 60), 2);
+            }
+        }
+
         return $active;
+    }
+
+    /**
+     * Helper to determine country based on employee/location data
+     */
+    private function getCountryForEmployee($employeeId) {
+        $stmt = $this->db->prepare("
+            SELECT e.nationality, l.name as location_name, l.address as location_address
+            FROM employees e
+            LEFT JOIN work_locations l ON e.work_location_id = l.id
+            WHERE e.id = ?
+        ");
+        $stmt->execute([$employeeId]);
+        $data = $stmt->fetch();
+        
+        if (!$data) return 'Egypt';
+        
+        $searchString = ($data['nationality'] ?? '') . ' ' . ($data['location_name'] ?? '') . ' ' . ($data['location_address'] ?? '');
+        
+        if (stripos($searchString, 'Saudi') !== false || stripos($searchString, 'السعودية') !== false || stripos($searchString, 'KSA') !== false) return 'KSA';
+        if (stripos($searchString, 'Jordan') !== false || stripos($searchString, 'الأردن') !== false) return 'Jordan';
+        if (stripos($searchString, 'Turkey') !== false || stripos($searchString, 'تركيا') !== false) return 'Turkey';
+        
+        return 'Egypt'; // Default fallback
     }
 
     /**

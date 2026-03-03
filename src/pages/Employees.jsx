@@ -75,6 +75,8 @@ export default function Employees() {
   const [saving, setSaving] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [filterDept, setFilterDept] = useState("all");
+  const [filterLocation, setFilterLocation] = useState("all");
 
   // استخدام نظام الصلاحيات المركزي
   const {
@@ -89,15 +91,23 @@ export default function Employees() {
     if (!authLoading) {
       loadData();
     }
-  }, [authLoading, currentUser, userEmployee]);
+  }, [authLoading, currentUser, userEmployee, filterDept, filterLocation]);
 
   const loadData = async () => {
     if (authLoading) return; // انتظر تحميل بيانات المستخدم
 
     setLoading(true);
     try {
+      const queryParams = {
+        sort: "-created_date",
+        limit: 200
+      };
+
+      if (filterDept !== "all") queryParams.department = filterDept;
+      if (filterLocation !== "all") queryParams.work_location_id = filterLocation;
+
       const [empData, deptData, posData, bankData, natData, locData, schData] = await Promise.all([
-        base44.entities.Employee.list("-created_date", 200),
+        base44.entities.Employee.list(queryParams),
         base44.entities.Department.list(),
         base44.entities.Position.list(),
         base44.entities.BankName.list(),
@@ -320,7 +330,8 @@ export default function Employees() {
       ({
         active: "نشط",
         inactive: "غير نشط",
-        terminated: "مفسوخ",
+        terminated: "منهية خدماته",
+        resigned: "مستقيل",
         expired: "منتهي"
       }[emp.status] || emp.status),
     ]);
@@ -485,6 +496,52 @@ export default function Employees() {
             استيراد
           </Button>
         </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white p-4 rounded-xl border border-gray-100 flex flex-wrap gap-4 items-end print:hidden">
+        <div className="w-full sm:w-64">
+          <Label className="text-xs mb-1.5 block">تصفية حسب القسم</Label>
+          <Select value={filterDept} onValueChange={setFilterDept}>
+            <SelectTrigger className="bg-gray-50/50">
+              <SelectValue placeholder="كل الأقسام" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الأقسام</SelectItem>
+              {departments.filter(d => d.status === 'active').map(dept => (
+                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-full sm:w-64">
+          <Label className="text-xs mb-1.5 block">تصفية حسب الفرع / الموقع</Label>
+          <Select value={filterLocation} onValueChange={setFilterLocation}>
+            <SelectTrigger className="bg-gray-50/50">
+              <SelectValue placeholder="كل المواقع" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل المواقع</SelectItem>
+              {workLocations.filter(l => l.status === 'active').map(loc => (
+                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setFilterDept("all");
+            setFilterLocation("all");
+          }}
+          className="text-gray-500 hover:text-[#7c3238]"
+        >
+          <X className="w-4 h-4 ml-1" />
+          إعادة تعيين
+        </Button>
       </div>
 
       <DataTable
@@ -724,7 +781,8 @@ export default function Employees() {
                     <SelectContent>
                       <SelectItem value="active">نشط</SelectItem>
                       <SelectItem value="inactive">غير نشط</SelectItem>
-                      <SelectItem value="terminated">مفسوخ</SelectItem>
+                      <SelectItem value="terminated">منهية خدماته</SelectItem>
+                      <SelectItem value="resigned">مستقيل</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

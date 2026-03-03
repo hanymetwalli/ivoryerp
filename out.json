@@ -1,0 +1,141 @@
+{
+    "req": {
+        "id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+        "model_type": "EmployeeViolation",
+        "model_id": "eadad29e-14eb-488a-9726-f418bdc633e3",
+        "status": "pending",
+        "created_at": "2026-02-26 16:19:52",
+        "updated_at": "2026-02-26 16:19:52"
+    },
+    "steps": [
+        {
+            "id": "941c33c0-7f1a-47fb-825e-3c4066042b72",
+            "approval_request_id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+            "approver_user_id": null,
+            "role_id": null,
+            "step_order": 1,
+            "status": "pending",
+            "comments": null,
+            "is_name_visible": 1,
+            "action_date": null,
+            "created_at": "2026-02-26 16:19:52",
+            "updated_at": "2026-02-26 16:19:52"
+        },
+        {
+            "id": "17a590ee-dc45-4d0c-8e59-76ab179c44a9",
+            "approval_request_id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+            "approver_user_id": null,
+            "role_id": null,
+            "step_order": 2,
+            "status": "pending",
+            "comments": null,
+            "is_name_visible": 1,
+            "action_date": null,
+            "created_at": "2026-02-26 16:19:52",
+            "updated_at": "2026-02-26 16:19:52"
+        },
+        {
+            "id": "dd8b54c0-6c9c-4887-9c94-c5c89d7e6e7f",
+            "approval_request_id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+            "approver_user_id": "u-emp-04",
+            "role_id": "6c1629cb-02a0-11f1-a178-d481d76a1bbe",
+            "step_order": 3,
+            "status": "pending",
+            "comments": null,
+            "is_name_visible": 0,
+            "action_date": null,
+            "created_at": "2026-02-26 16:19:52",
+            "updated_at": "2026-02-26 16:19:52"
+        },
+        {
+            "id": "e299edfb-4aa0-44e8-87c7-89dee44e1927",
+            "approval_request_id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+            "approver_user_id": "u-emp-01",
+            "role_id": "ff72942b-09d7-4e42-aab5-03b98039c08a",
+            "step_order": 4,
+            "status": "pending",
+            "comments": null,
+            "is_name_visible": 1,
+            "action_date": null,
+            "created_at": "2026-02-26 16:19:52",
+            "updated_at": "2026-02-26 16:19:52"
+        },
+        {
+            "id": "6b2d2b37-677d-4ab0-8524-ce5330359ce0",
+            "approval_request_id": "7f4234be-fc1e-48da-acb5-0ce04da9147d",
+            "approver_user_id": "u-emp-05",
+            "role_id": "6c162c07-02a0-11f1-a178-d481d76a1bbe",
+            "step_order": 5,
+            "status": "pending",
+            "comments": null,
+            "is_name_visible": 1,
+            "action_date": null,
+            "created_at": "2026-02-26 16:19:52",
+            "updated_at": "2026-02-26 16:19:52"
+        }
+    ],
+    "blueprint": {
+        "id": "violation-bp-1772054975",
+        "request_type": "EmployeeViolation",
+        "is_active": 1,
+        "created_at": "2026-02-25 23:29:35",
+        "updated_at": "2026-02-25 23:29:35"
+    },
+    "b_steps": [
+        {
+            "id": "f8e84541-a571-46d6-a279-e5ccb584e8ef",
+            "blueprint_id": "violation-bp-1772054975",
+            "step_order": 1,
+            "role_id": null,
+            "is_direct_manager": 1,
+            "is_dept_manager": 0,
+            "show_approver_name": 1,
+            "created_at": "2026-02-26 13:46:02",
+            "updated_at": "2026-02-26 13:46:02"
+        },
+        {
+            "id": "a7067c62-4d22-4d23-a607-031e9d58a747",
+            "blueprint_id": "violation-bp-1772054975",
+            "step_order": 2,
+            "role_id": null,
+            "is_direct_manager": 0,
+            "is_dept_manager": 1,
+            "show_approver_name": 1,
+            "created_at": "2026-02-26 13:46:02",
+            "updated_at": "2026-02-26 13:46:02"
+        },
+        {
+            "id": "910d7170-e474-4149-b705-60c55a2e4d0c",
+            "blueprint_id": "violation-bp-1772054975",
+            "step_order": 3,
+            "role_id": "6c1629cb-02a0-11f1-a178-d481d76a1bbe",
+            "is_direct_manager": 0,
+            "is_dept_manager": 0,
+            "show_approver_name": 0,
+            "created_at": "2026-02-26 13:46:02",
+            "updated_at": "2026-02-26 13:46:02"
+        },
+        {
+            "id": "6330b465-a9b7-4a2c-9d99-822807920e14",
+            "blueprint_id": "violation-bp-1772054975",
+            "step_order": 4,
+            "role_id": "ff72942b-09d7-4e42-aab5-03b98039c08a",
+            "is_direct_manager": 0,
+            "is_dept_manager": 0,
+            "show_approver_name": 1,
+            "created_at": "2026-02-26 13:46:02",
+            "updated_at": "2026-02-26 13:46:02"
+        },
+        {
+            "id": "d4800179-1571-419e-a753-67604c9a903f",
+            "blueprint_id": "violation-bp-1772054975",
+            "step_order": 5,
+            "role_id": "6c162c07-02a0-11f1-a178-d481d76a1bbe",
+            "is_direct_manager": 0,
+            "is_dept_manager": 0,
+            "show_approver_name": 1,
+            "created_at": "2026-02-26 13:46:02",
+            "updated_at": "2026-02-26 13:46:02"
+        }
+    ]
+}

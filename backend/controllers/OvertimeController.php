@@ -63,6 +63,8 @@ class OvertimeController extends BaseController {
     public function customAction($id, $action, $data = null) {
         if ($action === 'resubmit') {
             return $this->handleResubmit($id);
+        } elseif ($action === 'submit-report') {
+            return $this->submitReport($id, $data);
         }
         return parent::customAction($id, $action, $data);
     }
@@ -104,6 +106,125 @@ class OvertimeController extends BaseController {
     }
 
     /**
+     * تقديم تقرير المهمة بعد الاعتماد المبدئي
+     */
+    private function submitReport($id, $data) {
+        try {
+            error_log("=== submitReport START === id=$id");
+            error_log("Content-Type: " . ($_SERVER['CONTENT_TYPE'] ?? 'NONE'));
+            error_log("\$data keys: " . implode(',', array_keys($data ?: [])));
+            error_log("\$_POST keys: " . implode(',', array_keys($_POST)));
+            error_log("\$_FILES keys: " . implode(',', array_keys($_FILES)));
+
+            // For FormData submissions, $data comes from $_POST via getRequestBody()
+            $reportContent = $data['report_content'] ?? $_POST['report_content'] ?? null;
+            
+            error_log("reportContent length: " . ($reportContent ? strlen($reportContent) : 'NULL'));
+
+            if (empty($reportContent)) {
+                throw new Exception("يجب كتابة محتوى التقرير");
+            }
+
+            $this->db->beginTransaction();
+
+            // 1. Verify existence and status
+            $stmt = $this->db->prepare("SELECT id, report_status FROM {$this->table} WHERE id = :id FOR UPDATE");
+            $stmt->execute([':id' => $id]);
+            $overtime = $stmt->fetch();
+
+            if (!$overtime) {
+                throw new Exception("الطلب غير موجود (id=$id)");
+            }
+
+            error_log("Current report_status: " . var_export($overtime['report_status'], true));
+
+            // Allow submission for: pending, none, rejected, empty string, or null
+            $allowedStatuses = ['pending', 'none', 'rejected', '', null];
+            if (!in_array($overtime['report_status'], $allowedStatuses, true)) {
+                throw new Exception("لا يمكن تقديم التقرير في الحالة الحالية: " . $overtime['report_status']);
+            }
+
+            // 2. Clear old report workflow if resubmitting
+            if ($overtime['report_status'] === 'rejected') {
+                $stmt = $this->db->prepare("SELECT id FROM approval_requests WHERE model_type = :mtype AND model_id = :mid");
+                $stmt->execute([':mtype' => 'OvertimeReport', ':mid' => $id]);
+                $oldRequest = $stmt->fetch();
+
+                if ($oldRequest) {
+                    $this->db->prepare("DELETE FROM approval_steps WHERE approval_request_id = :rid")
+                             ->execute([':rid' => $oldRequest['id']]);
+                    $this->db->prepare("DELETE FROM approval_requests WHERE id = :id")
+                             ->execute([':id' => $oldRequest['id']]);
+                }
+            }
+
+            // 3. Handle File Upload if present
+            $attachmentPath = null;
+            if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+                $uploadDir = __DIR__ . '/../../uploads/reports/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0777, true);
+                }
+                
+                $fileName = time() . '_' . uniqid() . '_' . basename($_FILES['attachment']['name']);
+                $targetFile = $uploadDir . $fileName;
+
+                if (move_uploaded_file($_FILES['attachment']['tmp_name'], $targetFile)) {
+                    $attachmentPath = 'uploads/reports/' . $fileName;
+                    error_log("File saved to: $attachmentPath");
+                } else {
+                    error_log("move_uploaded_file FAILED");
+                    throw new Exception("حدث خطأ أثناء رفع الملف المرفق.");
+                }
+            } else {
+                error_log("No file uploaded or error: " . ($_FILES['attachment']['error'] ?? 'no attachment key'));
+            }
+
+            // 4. Update the report content, report_status, and report_attachment
+            $updateSql = "UPDATE {$this->table} SET report_content = :content, report_status = 'submitted'";
+            $updateParams = [':content' => $reportContent, ':id' => $id];
+            
+            if ($attachmentPath) {
+                $updateSql .= ", report_attachment = :attachment";
+                $updateParams[':attachment'] = $attachmentPath;
+            }
+            $updateSql .= " WHERE id = :id";
+            
+            $stmtUpdate = $this->db->prepare($updateSql);
+            $updateResult = $stmtUpdate->execute($updateParams);
+            $rowCount = $stmtUpdate->rowCount();
+            error_log("DB UPDATE result: " . var_export($updateResult, true) . " rowCount=" . $rowCount);
+
+            // Verify DB update actually changed a row
+            if (!$updateResult || $rowCount === 0) {
+                throw new Exception("فشل تحديث حالة التقرير في قاعدة البيانات. updateResult=$updateResult, rowCount=$rowCount");
+            }
+
+            // 5. Create new workflow for OvertimeReport
+            $workflowService = new WorkflowService();
+            $workflowService->generateFlow('OvertimeReport', $id, 'OvertimeReport');
+            error_log("Workflow generated for OvertimeReport id=$id");
+
+            $this->db->commit();
+            error_log("=== submitReport SUCCESS ===");
+            return ['success' => true, 'message' => 'تم تقديم التقرير بنجاح وبدء مسار الاعتماد'];
+        } catch (\Throwable $e) {
+            error_log("=== submitReport ERROR: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . " ===");
+            error_log("=== submitReport TRACE: " . $e->getTraceAsString() . " ===");
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            exit;
+        }
+    }
+
+
+    /**
      * معالجة كل صف لإرفاق خطوات الاعتماد الديناميكية
      */
     protected function processRow($row) {
@@ -129,7 +250,9 @@ class OvertimeController extends BaseController {
                 WHERE req.model_type = :mtype AND req.model_id = :mid
                 ORDER BY s.step_order ASC
             ");
-            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            // Determine correct model type based on report status
+            $mtype = (!empty($row['report_status']) && !in_array($row['report_status'], ['none', 'pending', ''])) ? 'OvertimeReport' : $this->table;
+            $stmt->execute([':mtype' => $mtype, ':mid' => $row['id']]);
             $steps = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Mapping for Role Names to Arabic
@@ -165,8 +288,9 @@ class OvertimeController extends BaseController {
 
         // جلب حالة طلب الاعتماد الإجمالية
         try {
-            $stmt = $this->db->prepare("SELECT id, status FROM approval_requests WHERE model_type = :mtype AND model_id = :mid LIMIT 1");
-            $stmt->execute([':mtype' => $this->table, ':mid' => $row['id']]);
+            $mtype = (!empty($row['report_status']) && !in_array($row['report_status'], ['none', 'pending', ''])) ? 'OvertimeReport' : $this->table;
+            $stmt = $this->db->prepare("SELECT id, status FROM approval_requests WHERE model_type = :mtype AND model_id = :mid ORDER BY created_at DESC LIMIT 1");
+            $stmt->execute([':mtype' => $mtype, ':mid' => $row['id']]);
             $req = $stmt->fetch();
             if ($req) {
                 $row['workflow_id'] = $req['id'];

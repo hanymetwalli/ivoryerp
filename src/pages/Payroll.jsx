@@ -65,6 +65,7 @@ export default function Payroll() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCalculateModal, setShowCalculateModal] = useState(false);
   const [showBatchDetails, setShowBatchDetails] = useState(false);
+  const [showForceApproveDialog, setShowForceApproveDialog] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [approvalChain, setApprovalChain] = useState([]);
@@ -72,6 +73,8 @@ export default function Payroll() {
   const [calculateData, setCalculateData] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
+    department_id: "all",
+    currency: "all",
   });
   const [saving, setSaving] = useState(false);
   const [filterMonth, setFilterMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`);
@@ -81,7 +84,10 @@ export default function Payroll() {
   const [detailsSearch, setDetailsSearch] = useState("");
   const [detailsDept, setDetailsDept] = useState("all");
   const [detailsCurrency, setDetailsCurrency] = useState("all");
+  const [filterDept, setFilterDept] = useState("all");
+  const [filterCurrency, setFilterCurrency] = useState("all");
   const [companyProfile, setCompanyProfile] = useState(null);
+  const [departments, setDepartments] = useState([]);
 
   const {
     currentUser,
@@ -96,13 +102,22 @@ export default function Payroll() {
     if (!authLoading) {
       loadData();
     }
-  }, [filterMonth, authLoading, currentUser, userEmployee]);
+  }, [filterMonth, authLoading, currentUser, userEmployee, filterDept, filterCurrency]);
 
   const loadData = async () => {
     if (authLoading) return;
 
     setLoading(true);
     try {
+      const payrollParams = {
+        month: filterMonth.split('-')[1],
+        year: filterMonth.split('-')[0],
+        limit: 2000
+      };
+
+      if (filterDept !== "all") payrollParams.department_id = filterDept;
+      if (filterCurrency !== "all") payrollParams.currency = filterCurrency;
+
       const [
         payrollData,
         batchData,
@@ -114,8 +129,9 @@ export default function Payroll() {
         deductionData,
         insData,
         compData,
+        deptData,
       ] = await Promise.all([
-        base44.entities.Payroll.list("-created_at", 2000),
+        base44.entities.Payroll.list(payrollParams),
         base44.entities.PayrollBatches.list("-created_at"),
         base44.entities.Employee.list(),
         base44.entities.Contract.list(),
@@ -125,6 +141,7 @@ export default function Payroll() {
         base44.entities.Deduction.list(),
         base44.entities.InsuranceSettings.list(),
         base44.entities.CompanyProfile.list(),
+        base44.entities.Department.list(),
       ]);
 
       const allowedEmployees = filterEmployees(empData, PERMISSIONS.VIEW_ALL_PAYROLL);
@@ -142,6 +159,7 @@ export default function Payroll() {
       setDeductions(deductionData);
       setInsuranceSettings(insData);
       setCompanyProfile(Array.isArray(compData) ? compData[0] : (compData?.id ? compData : null));
+      setDepartments(deptData);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -190,10 +208,19 @@ export default function Payroll() {
   const handleGenerateBatch = async () => {
     setSaving(true);
     try {
-      const response = await base44.entities.Payroll.customAction(0, 'generate-batch', {
+      const payload = {
         month: Number(calculateData.month),
         year: Number(calculateData.year),
-      });
+      };
+
+      if (calculateData.department_id && calculateData.department_id !== "all") {
+        payload.department_id = calculateData.department_id;
+      }
+      if (calculateData.currency && calculateData.currency !== "all") {
+        payload.currency = calculateData.currency;
+      }
+
+      const response = await base44.entities.Payroll.customAction(0, 'generate-batch', payload);
 
       if (response && response.success) {
         toast.success(`تم توليد مسير الرواتب لعدد ${response.data.count} موظف بنجاح`);
@@ -299,20 +326,21 @@ export default function Payroll() {
     if (!selectedBatch?.workflow_id) return;
     setSaving(true);
     try {
-      const response = await base44.entities.Workflow.customAction(selectedBatch.id, 'force-approve', {
+      const response = await base44.entities.Workflow.customAction(selectedBatch.workflow_id, 'force-approve', {
         user_id: currentUser.id
       });
 
       if (response && response.success) {
-        toast.success("تم الاعتماد النهائي الاستثنائي بنجاح ⚡");
+        toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
         loadData();
         setShowBatchDetails(false);
+        setShowForceApproveDialog(false);
       } else {
         toast.error(response?.error || "فشلت العملية");
       }
     } catch (error) {
       console.error("Error force approving:", error);
-      toast.error("حدث خطأ تقني");
+      toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
     setSaving(false);
   };
@@ -626,6 +654,14 @@ export default function Payroll() {
                 حساب الرواتب
               </Button>
             )}
+            {hasPermission(PERMISSIONS.CALCULATE_PAYROLL) && <Button
+              onClick={() => setShowForceApproveDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+            >
+              <CheckCircle className="w-4 h-4 ml-2" />
+              اعتماد نهائي استثنائي ⚡
+            </Button>
+            }
           </div>
         </div>
 
@@ -847,7 +883,7 @@ export default function Payroll() {
                         <p className="text-sm text-gray-500 italic text-center py-4">في انتظار بدء سلسلة الاعتمادات...</p>
                       )}
 
-                      {hasPermission('force_approve') && selectedBatch?.status !== 'approved' && selectedBatch?.status !== 'paid' && (
+                      {hasPermission(PERMISSIONS.FORCE_APPROVE) && selectedBatch?.status !== 'approved' && selectedBatch?.status !== 'paid' && (
                         <div className="pt-4 border-t">
                           <Button
                             variant="ghost"
@@ -894,7 +930,7 @@ export default function Payroll() {
                     setCalculateData({ ...calculateData, month: Number(v) })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-gray-50/50">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -914,7 +950,7 @@ export default function Payroll() {
                     setCalculateData({ ...calculateData, year: Number(v) })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-gray-50/50">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -930,6 +966,53 @@ export default function Payroll() {
                 </Select>
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-gray-700">تصفية حسب القسم (اختياري)</Label>
+                <Select
+                  value={calculateData.department_id || "all"}
+                  onValueChange={(v) =>
+                    setCalculateData({ ...calculateData, department_id: v })
+                  }
+                >
+                  <SelectTrigger className="bg-[#7c3238]/5 border-[#7c3238]/10">
+                    <SelectValue placeholder="الكل" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل الأقسام</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-gray-700">العملة (اختياري)</Label>
+                <Select
+                  value={calculateData.currency || "all"}
+                  onValueChange={(v) =>
+                    setCalculateData({ ...calculateData, currency: v })
+                  }
+                >
+                  <SelectTrigger className="bg-[#7c3238]/5 border-[#7c3238]/10">
+                    <SelectValue placeholder="الكل" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">كل العملات</SelectItem>
+                    <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
+                    <SelectItem value="EGP">جنيه مصري (EGP)</SelectItem>
+                    <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
+                    <SelectItem value="TRY">ليرة تركية (TRY)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded border border-amber-100 mt-2 italic">
+              * في حال عدم اختيار قسم أو عملة، سيتم التوليد لجميع الموظفين كالمعتاد.
+            </p>
           </div>
         </FormModal>
 
@@ -1133,10 +1216,10 @@ export default function Payroll() {
           title="حذف الراتب"
           description="هل أنت متأكد من حذف هذا الراتب؟"
         />
-      </div>
+      </div >
 
       {/* Formal Print Layout (Hidden on screen) */}
-      <div id="printable-payroll" className="print-only hidden print:block print:absolute print:top-0 print:left-0 print:w-full print:bg-white print:z-50 print:p-8 text-right font-sans" dir="rtl">
+      < div id="printable-payroll" className="print-only hidden print:block print:absolute print:top-0 print:left-0 print:w-full print:bg-white print:z-50 print:p-8 text-right font-sans" dir="rtl" >
         <div className="space-y-8">
           {/* Header */}
           <div className="flex border-b-2 border-gray-900 pb-6 items-center">
@@ -1231,7 +1314,7 @@ export default function Payroll() {
             تاريخ الطباعة: {new Date().toLocaleString('ar-SA')} | نظام ايفوري لإدارة الموارد البشرية
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

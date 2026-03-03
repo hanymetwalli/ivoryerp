@@ -475,7 +475,7 @@ export default function Leaves() {
                     className="text-blue-600 font-bold"
                   >
                     <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي ⚡
+                    اعتماد نهائي استثنائي ⚡
                   </DropdownMenuItem>
                 </>
               )}
@@ -624,11 +624,11 @@ export default function Leaves() {
         onClose={() => setShowForceApproveDialog(false)}
         onConfirm={handleForceApprove}
         title="تأكيد الاعتماد النهائي الاستثنائي"
-        description="هل أنت متأكد من الاعتماد المباشر؟ سيتم تخطي الخطوات المتبقية واعتمادها باسمك كمدير للنظام مع الاحتفاظ بأي اعتمادات سابقة تمت على الطلب."
-        confirmText="تأكيد الاعتماد ⚡"
-        cancelText="إلغاء"
+        description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
+        confirmLabel="تأكيد الاعتماد ⚡"
+        cancelLabel="إلغاء"
         variant="destructive"
-        loading={approvalProcessing}
+        loading={forceApproveLoading}
       />
 
       <FormModal

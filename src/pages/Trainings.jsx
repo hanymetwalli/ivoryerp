@@ -214,36 +214,24 @@ export default function Trainings() {
   };
 
   const handleForceApprove = async () => {
-    console.log("⚡ Starting Force Approve Diagnostic...");
-    console.log("Selected Record:", selectedTraining);
-
     if (!selectedTraining || !selectedTraining.workflow_id) {
-      console.error("❌ Diagnostic: Missing workflow_id", selectedTraining);
       toast.error("لم يتم العثور على سجل سير عمل لهذا الطلب");
       return;
     }
 
     setForceApproveLoading(true);
     try {
-      console.log(`📡 Sending customAction 'force-approve' to Workflow ID: ${selectedTraining.workflow_id}`);
-      console.log(`👤 User ID: ${currentUser?.id}`);
-
-      const response = await ivoryClient.entities.Workflow.customAction(selectedTraining.workflow_id, 'force-approve', {
+      await ivoryClient.entities.Workflow.customAction(selectedTraining.workflow_id, 'force-approve', {
         user_id: currentUser?.id
       });
 
-      console.log("✅ Diagnostic Response:", response);
       toast.success("⚡ تم الاعتماد النهائي الاستثنائي بنجاح");
       setShowForceApproveDialog(false);
-
-      console.log("🔄 Invalidating queries...");
       queryClient.invalidateQueries({ queryKey: ["trainings"] });
       queryClient.invalidateQueries({ queryKey: ["employeeTrainings"] });
-
-      console.log("🔃 Calling loadData()...");
       loadData();
     } catch (error) {
-      console.error("❌ Force approve diagnostic error:", error);
+      console.error("Force approve error:", error);
       toast.error(error.message || "حدث خطأ أثناء الاعتماد الاستثنائي");
     }
     setForceApproveLoading(false);
@@ -261,9 +249,15 @@ export default function Trainings() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
     if (!formData.employee_id || !formData.training_id || !formData.start_date) {
       toast.error("يرجى ملء الحقول المطلوبة");
+      return;
+    }
+
+    if (formData.end_date && formData.start_date && formData.end_date < formData.start_date) {
+      toast.error("تاريخ النهاية لا يمكن أن يكون قبل تاريخ البداية");
       return;
     }
 
@@ -289,8 +283,9 @@ export default function Trainings() {
     } catch (error) {
       console.error("Error saving training:", error);
       toast.error("حدث خطأ: " + error.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const isCurrentApprover = (training) => {
@@ -343,7 +338,8 @@ export default function Trainings() {
     }
   };
 
-  const handleSubmitTraining = async () => {
+  const handleSubmitTraining = async (e) => {
+    if (e) e.preventDefault();
     if (!trainingFormData.name) {
       toast.error("يرجى إدخال اسم الدورة");
       return;
@@ -362,9 +358,10 @@ export default function Trainings() {
       setShowTrainingForm(false);
     } catch (error) {
       console.error("Error saving training:", error);
-      toast.error("حدث خطأ");
+      toast.error("حدث خطأ: " + error.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleImport = async (file) => {
@@ -490,14 +487,13 @@ export default function Trainings() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => {
-                      console.log("⚡ Menu Item Clicked: Force Approve for", row.request_number || row.id);
                       setSelectedTraining(row);
                       setShowForceApproveDialog(true);
                     }}
                     className="text-blue-600 font-bold"
                   >
                     <CheckCircle className="w-4 h-4 ml-2" />
-                    الاعتماد النهائي الاستثنائي ⚡
+                    اعتماد نهائي استثنائي ⚡
                   </DropdownMenuItem>
                 </>
               )}
@@ -734,11 +730,11 @@ export default function Trainings() {
               <Label>عدد الساعات</Label>
               <Input
                 type="number"
-                value={trainingFormData.duration_hours}
+                value={trainingFormData.duration_hours || ''}
                 onChange={(e) =>
                   setTrainingFormData({
                     ...trainingFormData,
-                    duration_hours: parseInt(e.target.value),
+                    duration_hours: e.target.value === '' ? '' : parseInt(e.target.value),
                   })
                 }
               />
@@ -747,11 +743,11 @@ export default function Trainings() {
               <Label>التكلفة</Label>
               <Input
                 type="number"
-                value={trainingFormData.cost}
+                value={trainingFormData.cost || ''}
                 onChange={(e) =>
                   setTrainingFormData({
                     ...trainingFormData,
-                    cost: parseFloat(e.target.value),
+                    cost: e.target.value === '' ? '' : parseFloat(e.target.value),
                   })
                 }
                 placeholder="0.00"
@@ -939,8 +935,8 @@ export default function Trainings() {
         open={showForceApproveDialog}
         onClose={() => setShowForceApproveDialog(false)}
         onConfirm={handleForceApprove}
-        title="تأكيد الاعتماد النهائي الاستثنائي"
-        description="هل أنت متأكد من الاعتماد المباشر لهذا الطلب؟ سيتم تخطي كافة خطوات الموافقة المتبقية واعتماده باسمك كمدير للنظام."
+        title="الاعتماد النهائي الاستثنائي ⚡"
+        description="هل أنت متأكد من الاعتماد النهائي المباشر لهذا الطلب؟ سيتم تجاوز كافة خطوات سير العمل المتبقية واعتماد الطلب بشكل نهائي استثنائي."
         confirmLabel="تأكيد الاعتماد ⚡"
         cancelLabel="إلغاء"
         variant="destructive"

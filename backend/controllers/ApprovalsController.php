@@ -79,6 +79,51 @@ class ApprovalsController extends BaseController {
      * تنفيذ إجراء (اعتماد/رفض/إرجاع)
      */
     public function customAction($id, $action, $data = null) {
+        if ($action === 'process') {
+            $data = $data ?: json_decode(file_get_contents('php://input'), true);
+            $entityName = $data['entity_name'] ?? null;
+            $entityId = $data['entity_id'] ?? null;
+            $userId = $data['user_id'] ?? $data['approver_id'] ?? null;
+            $stepAction = $data['action'] ?? null;
+            $comments = $data['notes'] ?? $data['comments'] ?? '';
+
+            if (!$entityName || !$entityId || !$userId || !$stepAction) {
+                http_response_code(400);
+                return ['error' => true, 'message' => 'بيانات ناقصة (entity_name, entity_id, approver_id, action مطلوبين)'];
+            }
+
+            // Find the pending step for this entity
+            $sql = "SELECT s.id 
+                    FROM approval_steps s
+                    JOIN approval_requests r ON s.approval_request_id = r.id
+                    WHERE (r.model_type = :mtype OR r.model_type = :mtype2) 
+                    AND r.model_id = :mid AND s.status = 'pending'
+                    ORDER BY s.step_order ASC LIMIT 1";
+            
+            // Map common entity names to model types if different
+            $mtype2 = $entityName;
+            if ($entityName === 'employee_violations') $mtype2 = 'EmployeeViolation';
+            if ($entityName === 'overtime') $mtype2 = 'OvertimeReport';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':mtype' => $entityName, ':mtype2' => $mtype2, ':mid' => $entityId]);
+            $step = $stmt->fetch();
+
+            if (!$step) {
+                http_response_code(404);
+                return ['error' => true, 'message' => 'لا يوجد خطوة معلقة لهذا الطلب أو تم اعتماده/رفضه بالفعل'];
+            }
+
+            try {
+                $workflowService = new WorkflowService();
+                $result = $workflowService->processAction($step['id'], $userId, $stepAction, $comments);
+                return $result;
+            } catch (Exception $e) {
+                http_response_code(500);
+                return ['error' => true, 'message' => $e->getMessage()];
+            }
+        }
+
         if ($action !== 'submit') {
             return parent::customAction($id, $action, $data);
         }
@@ -124,8 +169,8 @@ class ApprovalsController extends BaseController {
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch();
-        } elseif ($modelType === 'overtime') {
-            $sql = "SELECT ot.*, e.full_name as employee_name
+        } elseif ($modelType === 'overtime' || $modelType === 'OvertimeReport') {
+            $sql = "SELECT ot.*, ot.date as request_date, e.full_name as employee_name
                     FROM overtime ot
                     LEFT JOIN employees e ON ot.employee_id = e.id
                     WHERE ot.id = :id";
@@ -141,7 +186,8 @@ class ApprovalsController extends BaseController {
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch();
         } elseif ($modelType === 'employee_trainings') {
-            $sql = "SELECT et.*, e.full_name as employee_name, t.name as training_name
+            $sql = "SELECT et.*, e.full_name as employee_name, t.name as training_name,
+                           COALESCE(et.request_date, et.created_at) as request_date
                     FROM employee_trainings et
                     LEFT JOIN employees e ON et.employee_id = e.id
                     LEFT JOIN trainings t ON et.training_id = t.id
@@ -154,6 +200,22 @@ class ApprovalsController extends BaseController {
                     FROM employee_violations ev
                     LEFT JOIN employees e ON ev.employee_id = e.id
                     WHERE ev.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
+        } elseif ($modelType === 'contracts') {
+            $sql = "SELECT c.*, e.full_name as employee_name, c.created_at as request_date
+                    FROM contracts c
+                    LEFT JOIN employees e ON c.employee_id = e.id
+                    WHERE c.id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':id' => $modelId]);
+            return $stmt->fetch();
+        } elseif ($modelType === 'resignations' || $modelType === 'ResignationRequest') {
+            $sql = "SELECT r.*, e.full_name as employee_name, r.resignation_date as request_date
+                    FROM resignations r
+                    LEFT JOIN employees e ON r.employee_id = e.id
+                    WHERE r.id = :id";
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':id' => $modelId]);
             return $stmt->fetch();
