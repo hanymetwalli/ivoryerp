@@ -12,6 +12,12 @@ backend/config.php
 node_modules/
 backend/vendor/
 
+Entities/
+excel/
+docs/
+api/
+backend/database/
+
 # --- Database & Backups ---
 # استبعاد مجلد قاعدة البيانات والنسخ الاحتياطية
 mysql/
