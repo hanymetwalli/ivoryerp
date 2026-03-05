@@ -1,48 +1,54 @@
 # --- Environment & Sensitive Data ---
-# حماية ملفات الإعدادات وكلمات المرور
 .env
 .env.local
 .env.*
 .env.*.local
+.env.development
+.env.production
 backend/.env
 backend/config.php
+*.sql
+out.json
 
-# --- Dependencies ---
-# استبعاد مجلدات المكتبات الثقيلة (يتم تحميلها على السيرفر)
-node_modules/
-backend/vendor/
+# --- AI & Debug Junk (Root Only) ---
+# يتجاهل ملفات الفحص في المجلد الرئيسي فقط ولا يلمس المجلدات الفرعية
+/*.php
+/*.txt
+# استثناء ملفات السيرفر الهامة في الجذر
+!/.htaccess
 
+# --- Project Specific Exclusions ---
+# المجلدات التي طلبت استبعادها لخصوصية أو ثقل البيانات
 Entities/
 excel/
 docs/
 api/
 backend/database/
-
-# --- Database & Backups ---
-# استبعاد مجلد قاعدة البيانات والنسخ الاحتياطية
 mysql/
-*.sql
+
+# --- Dependencies ---
+node_modules/
+backend/vendor/
 
 # --- Build Outputs ---
-# استبعاد ملفات البناء (يتم توليدها محلياً للرفع)
 dist/
 dist-ssr/
 build/
 
-# --- Logs ---
-# استبعاد ملفات سجلات الأخطاء
+# --- Logs & Cache ---
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
+pnpm-debug.log*
+.phpunit.result.cache
 
 # --- User Uploads ---
-# استبعاد ملفات السيرة الذاتية والصور المرفوعة (خصوصية البيانات)
+# منع رفع ملفات المتقدمين الحقيقية لخصوصية البيانات
 uploads/
 backend/uploads/
 
 # --- Editor & OS Files ---
-# استبعاد ملفات محررات الأكواد ونظام التشغيل
 .vscode/
 !.vscode/extensions.json
 .idea/
