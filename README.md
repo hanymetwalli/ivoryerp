@@ -1,39 +1,18 @@
-**Welcome to your Base44 project** 
+🏢 نظام Ivory ERP - الإصدار المطور 2026
+نظام متكامل لإدارة الموارد البشرية (HRM) والاستقطاب والتوظيف (ATS) مبني بأحدث التقنيات.
 
-**About**
+🚀 المميزات الرئيسية التي تم إنجازها:
+بوابة توظيف احترافية (ATS): لوحة تحكم كاملة لإدارة الوظائف، استقبال الطلبات، ونظام تقييم ومقابلات ديناميكي.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+نظام صلاحيات متطور (Dynamic Scoping): إدارة دقيقة للأدوار تسمح بتقييد عرض البيانات بناءً على الأقسام أو الصلاحيات المطلقة.
 
-This project contains everything you need to run your app locally.
+تكامل البيانات: إمكانية تحويل المرشح الناجح إلى موظف في النظام بضغطة زر واحدة مع نقل كامل بياناته آلياً.
 
-**Edit the code in your local development environment**
+بيئة تشغيل ذكية: دعم كامل لملفات البيئة .env للعمل بسلاسة على السيرفرات الحقيقية ivoryerp.com.
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+🛠 التقنيات المستخدمة:
+Frontend: React.js, Vite, Tailwind CSS.
 
-**Prerequisites:** 
+Backend: PHP (PDO), MySQL.
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
-```
-
-Run the app: `npm run dev`
-
-**Publish your changes**
-
-Open [Base44.com](http://Base44.com) and click on Publish.
-
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+Server: Apache (.htaccess optimized).
