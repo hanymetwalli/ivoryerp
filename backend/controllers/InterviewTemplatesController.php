@@ -20,6 +20,7 @@ class InterviewTemplatesController extends BaseController {
      */
     public function index() {
         try {
+            $this->checkPermission('manage_recruitment_templates');
             $params = getQueryParams();
             $page = max(1, intval($params['page'] ?? 1));
             $limit = min(1000, max(1, intval($params['limit'] ?? 100)));
@@ -96,6 +97,7 @@ class InterviewTemplatesController extends BaseController {
      */
     public function show($id) {
         try {
+            $this->checkPermission('manage_recruitment_templates');
             $stmt = $this->db->prepare("SELECT * FROM interview_templates WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $template = $stmt->fetch();
@@ -126,6 +128,7 @@ class InterviewTemplatesController extends BaseController {
      */
     public function store($data) {
         try {
+            $this->checkPermission('manage_recruitment_templates');
             $this->db->beginTransaction();
 
             // 1. Save template
@@ -164,6 +167,7 @@ class InterviewTemplatesController extends BaseController {
      */
     public function update($id, $data) {
         try {
+            $this->checkPermission('manage_recruitment_templates');
             $this->db->beginTransaction();
 
             $items = $data['items'] ?? null;
@@ -218,5 +222,9 @@ class InterviewTemplatesController extends BaseController {
                 ':sort_order'    => $item['sort_order'] ?? $index
             ]);
         }
+    }
+    public function destroy($id) {
+        $this->checkPermission('manage_recruitment_templates');
+        return parent::destroy($id);
     }
 }

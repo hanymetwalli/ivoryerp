@@ -15,6 +15,8 @@ import {
 import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import { toast } from "sonner";
+import { useAuth } from "@/components/AuthProvider";
+import { PERMISSIONS } from "@/components/permissions";
 
 const STATUS_MAP = {
     new: { label: "جديد", color: "bg-blue-100 text-blue-700" },
@@ -44,7 +46,7 @@ export default function Applications() {
     const [selectedTemplate, setSelectedTemplate] = useState(null);
     const [interviewData, setInterviewData] = useState({});
     const [savingInterview, setSavingInterview] = useState(false);
-
+    const { hasPermission } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -242,6 +244,16 @@ export default function Applications() {
             accessor: "status",
             cell: (row) => {
                 const s = STATUS_MAP[row.status] || STATUS_MAP.new;
+                const canEditStatus = hasPermission(PERMISSIONS.EDIT_APPLICATIONS);
+
+                if (!canEditStatus) {
+                    return (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${s.color}`}>
+                            {s.label}
+                        </span>
+                    );
+                }
+
                 return (
                     <Select
                         value={row.status || "new"}
@@ -270,12 +282,16 @@ export default function Applications() {
                     <Button variant="outline" size="sm" onClick={() => handleDownloadCV(row.cv_path)} disabled={!row.cv_path} className="text-[#7c3238] gap-1 px-2 h-8">
                         <Download className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-1 px-2 h-8 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 uppercase" onClick={() => handleOpenInterview(row)}>
-                        <ClipboardCheck className="w-4 h-4" /> المقابلة
-                    </Button>
-                    <Button variant="outline" size="sm" className="gap-1 px-2 h-8 text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 uppercase" onClick={() => handleHire(row)}>
-                        <UserPlus className="w-4 h-4" /> تعيين
-                    </Button>
+                    {hasPermission(PERMISSIONS.CREATE_INTERVIEWS) && (
+                        <Button variant="outline" size="sm" className="gap-1 px-2 h-8 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 uppercase" onClick={() => handleOpenInterview(row)}>
+                            <ClipboardCheck className="w-4 h-4" /> المقابلة
+                        </Button>
+                    )}
+                    {hasPermission(PERMISSIONS.ADD_EMPLOYEE) && (
+                        <Button variant="outline" size="sm" className="gap-1 px-2 h-8 text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 uppercase" onClick={() => handleHire(row)}>
+                            <UserPlus className="w-4 h-4" /> تعيين
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -430,22 +446,26 @@ export default function Applications() {
                         >
                             إغلاق
                         </Button>
-                        <Button
-                            variant="outline"
-                            className="gap-2 text-blue-600 hover:text-blue-700"
-                            onClick={() => { setShowDetails(false); handleOpenInterview(selectedApp); }}
-                        >
-                            <ClipboardCheck className="w-4 h-4" />
-                            تقييم المرشح
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="gap-2 text-emerald-600 hover:text-emerald-700"
-                            onClick={() => { setShowDetails(false); handleHire(selectedApp); }}
-                        >
-                            <UserPlus className="w-4 h-4" />
-                            تعيين كموظف
-                        </Button>
+                        {hasPermission(PERMISSIONS.CREATE_INTERVIEWS) && (
+                            <Button
+                                variant="outline"
+                                className="gap-2 text-blue-600 hover:text-blue-700"
+                                onClick={() => { setShowDetails(false); handleOpenInterview(selectedApp); }}
+                            >
+                                <ClipboardCheck className="w-4 h-4" />
+                                تقييم المرشح
+                            </Button>
+                        )}
+                        {hasPermission(PERMISSIONS.ADD_EMPLOYEE) && (
+                            <Button
+                                variant="outline"
+                                className="gap-2 text-emerald-600 hover:text-emerald-700"
+                                onClick={() => { setShowDetails(false); handleHire(selectedApp); }}
+                            >
+                                <UserPlus className="w-4 h-4" />
+                                تعيين كموظف
+                            </Button>
+                        )}
                     </div>
 
                     <Button

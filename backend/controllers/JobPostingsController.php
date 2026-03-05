@@ -21,7 +21,35 @@ class JobPostingsController extends BaseController {
      */
     public function index() {
         try {
+            $access = $this->getUserAccess();
             $params = getQueryParams();
+            
+            $where = ' WHERE 1=1 ';
+            $sqlParams = [];
+
+            if (!$access) {
+                // Public access (Careers.jsx)
+                $where .= " AND jp.status = 'open'";
+            } else {
+                // Logged in: Check permissions
+                if (!$access['is_admin']) {
+                    $scope = $access['data_scopes']['view_jobs'] ?? null;
+                    if (!$scope && !in_array('view_jobs', $access['permissions'])) {
+                        return response_error("ليس لديك صلاحية لعرض الوظائف", 403);
+                    }
+                    
+                    if ($scope === 'department') {
+                        $deptId = $access['department_id'];
+                        if ($deptId) {
+                            $where .= " AND jp.department_id = :user_dept_id";
+                            $sqlParams[':user_dept_id'] = $deptId;
+                        } else {
+                            $where .= " AND 1=0";
+                        }
+                    }
+                }
+            }
+
             $page = max(1, intval($params['page'] ?? 1));
             $limit = min(1000, max(1, intval($params['limit'] ?? 100)));
             $offset = ($page - 1) * $limit;
@@ -29,9 +57,6 @@ class JobPostingsController extends BaseController {
             $sort = $params['sort'] ?? $this->defaultSort;
             if (!preg_match('/^[a-zA-Z0-9_]+$/', $sort)) $sort = $this->primaryKey;
             $order = (isset($params['order']) && strtoupper($params['order']) === 'ASC') ? 'ASC' : 'DESC';
-
-            $where = ' WHERE 1=1 ';
-            $sqlParams = [];
 
             // Search
             if (!empty($params['search'])) {
@@ -84,6 +109,9 @@ class JobPostingsController extends BaseController {
      */
     public function show($id) {
         try {
+            $access = $this->getUserAccess();
+            // Optional: careers showing public job info might not provide access info
+            
             $sql = "SELECT jp.*, 
                         d.name as department_name,
                         (SELECT COUNT(*) FROM job_applications ja WHERE ja.job_posting_id = jp.id) as applications_count
@@ -99,10 +127,50 @@ class JobPostingsController extends BaseController {
                 return ['error' => true, 'message' => 'Job posting not found'];
             }
 
+            // Scoping check for show
+            if ($access) { // Only apply scope if user is authenticated
+                if (!$access['is_admin']) {
+                    $scope = $access['data_scopes']['view_jobs'] ?? null;
+                    if (!$scope && !in_array('view_jobs', $access['permissions'])) {
+                        return response_error("ليس لديك صلاحية لعرض هذه الوظيفة", 403);
+                    }
+
+                    if ($scope === 'department') {
+                        $deptId = $access['department_id'];
+                        if ($deptId && $data['department_id'] !== $deptId) {
+                            return response_error("ليس لديك صلاحية لعرض وظائف خارج قسمك", 403);
+                        }
+                    }
+                }
+            } else {
+                // If not authenticated, ensure only 'open' jobs are viewable
+                if ($data['status'] !== 'open') {
+                    return response_error("هذه الوظيفة غير متاحة للعرض العام", 403);
+                }
+            }
+            
             return $this->processRow($data);
         } catch (Exception $e) {
             http_response_code(500);
             return ['error' => true, 'message' => $e->getMessage()];
         }
+    }
+
+    public function store($data) {
+        $user = $this->authenticate();
+        $this->checkPermission($user['id'], 'create_jobs');
+        return parent::store($data);
+    }
+
+    public function update($id, $data) {
+        $user = $this->authenticate();
+        $this->checkPermission($user['id'], 'edit_jobs');
+        return parent::update($id, $data);
+    }
+
+    public function destroy($id) {
+        $user = $this->authenticate();
+        $this->checkPermission($user['id'], 'delete_jobs');
+        return parent::destroy($id);
     }
 }

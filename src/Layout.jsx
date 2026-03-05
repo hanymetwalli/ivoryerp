@@ -123,9 +123,9 @@ function LayoutContent({ children, currentPageName }) {
       label: "الاستقطاب والتوظيف",
       icon: Briefcase,
       items: [
-        { name: "Jobs", icon: Briefcase, path: createPageUrl("Jobs"), label: "الوظائف" },
-        { name: "InterviewTemplatesPage", icon: ClipboardList, path: createPageUrl("InterviewTemplatesPage"), label: "قوالب المقابلات" },
-        { name: "Applications", icon: Users, path: createPageUrl("Applications"), label: "طلبات التوظيف" },
+        { name: "Jobs", icon: Briefcase, path: createPageUrl("Jobs"), label: "الوظائف", permission: PERMISSIONS.VIEW_JOBS },
+        { name: "InterviewTemplatesPage", icon: ClipboardList, path: createPageUrl("InterviewTemplatesPage"), label: "قوالب المقابلات", permission: PERMISSIONS.MANAGE_RECRUITMENT_TEMPLATES },
+        { name: "Applications", icon: Users, path: createPageUrl("Applications"), label: "طلبات التوظيف", permission: PERMISSIONS.VIEW_APPLICATIONS },
         { name: "Careers", icon: Briefcase, path: createPageUrl("Careers"), label: "بوابة التوظيف (عامة)" },
       ]
     },

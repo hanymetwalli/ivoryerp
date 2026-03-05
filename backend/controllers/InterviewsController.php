@@ -26,6 +26,26 @@ class InterviewsController extends BaseController {
      */
     public function index() {
         try {
+            $access = $this->getUserAccess();
+            if (!$access) return response_error("Unauthorized", 401);
+
+            if (!$access['is_admin']) {
+                $scope = $access['data_scopes']['view_interviews'] ?? null;
+                if (!$scope && !in_array('view_interviews', $access['permissions'])) {
+                    return response_error("ليس لديك صلاحية لعرض المقابلات", 403);
+                }
+
+                if ($scope === 'department') {
+                    $deptId = $access['department_id'];
+                    if ($deptId) {
+                        $where .= " AND jp.department_id = :user_dept_id";
+                        $sqlParams[':user_dept_id'] = $deptId;
+                    } else {
+                        $where .= " AND 1=0";
+                    }
+                }
+            }
+
             $params = getQueryParams();
             $page = max(1, intval($params['page'] ?? 1));
             $limit = min(1000, max(1, intval($params['limit'] ?? 100)));
@@ -109,6 +129,8 @@ class InterviewsController extends BaseController {
      */
     public function show($id) {
         try {
+            $access = $this->getUserAccess();
+
             $sql = "SELECT iv.*,
                         a.full_name as applicant_name,
                         a.email as applicant_email,
@@ -129,6 +151,24 @@ class InterviewsController extends BaseController {
             if (!$interview) {
                 http_response_code(404);
                 return ['error' => true, 'message' => 'Interview not found'];
+            }
+
+            // Scoping check for show
+            if ($access && !$access['is_admin']) {
+                $scope = $access['data_scopes']['view_interviews'] ?? null;
+                if (!$scope && !in_array('view_interviews', $access['permissions'])) {
+                    return response_error("ليس لديك صلاحية لعرض هذه المقابلة", 403);
+                }
+
+                if ($scope === 'department') {
+                    $stmt = $this->db->prepare("SELECT department_id FROM job_postings WHERE id = (SELECT job_posting_id FROM job_applications WHERE id = :app_id)");
+                    $stmt->execute([':app_id' => $interview['job_application_id']]);
+                    $jobDeptId = $stmt->fetchColumn();
+
+                    if ($access['department_id'] && $jobDeptId !== $access['department_id']) {
+                        return response_error("ليس لديك صلاحية لعرض مقابلات خارج قسمك", 403);
+                    }
+                }
             }
 
             $interview = $this->processRow($interview);
@@ -165,6 +205,7 @@ class InterviewsController extends BaseController {
      */
     public function store($data) {
         try {
+            $this->checkPermission('create_interviews');
             $this->db->beginTransaction();
 
             $evaluations = $data['evaluations'] ?? [];
@@ -207,6 +248,7 @@ class InterviewsController extends BaseController {
      */
     public function update($id, $data) {
         try {
+            $this->checkPermission('edit_interviews');
             $this->db->beginTransaction();
 
             // Get existing interview to know the application_id
@@ -263,6 +305,7 @@ class InterviewsController extends BaseController {
      */
     public function destroy($id) {
         try {
+            $this->checkPermission('delete_interviews');
             // Get application_id before deleting
             $stmt = $this->db->prepare("SELECT job_application_id FROM interviews WHERE id = :id");
             $stmt->execute([':id' => $id]);

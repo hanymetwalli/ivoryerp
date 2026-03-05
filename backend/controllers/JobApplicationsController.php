@@ -28,6 +28,9 @@ class JobApplicationsController extends BaseController {
      */
     public function index() {
         try {
+            $access = $this->getUserAccess();
+            $this->checkPermission(['view_all_applications', 'view_department_applications']);
+
             $params = getQueryParams();
             $page = max(1, intval($params['page'] ?? 1));
             $limit = min(1000, max(1, intval($params['limit'] ?? 100)));
@@ -35,6 +38,25 @@ class JobApplicationsController extends BaseController {
 
             $where = ' WHERE 1=1 ';
             $sqlParams = [];
+
+            // New permission-based filtering logic
+            if ($access && !$access['is_admin']) {
+                $scope = $access['data_scopes']['view_applications'] ?? null;
+                if (!$scope && !in_array('view_applications', $access['permissions'])) {
+                    return response_error("ليس لديك صلاحية لعرض الطلبات", 403);
+                }
+
+                if ($scope === 'department') {
+                    $deptId = $access['department_id'];
+                    if ($deptId) {
+                        $where .= " AND jp.department_id = :user_dept_id";
+                        $sqlParams[':user_dept_id'] = $deptId;
+                    } else {
+                        $where .= " AND 1=0";
+                    }
+                }
+            }
+
 
             // Search
             if (!empty($params['search'])) {
@@ -110,6 +132,8 @@ class JobApplicationsController extends BaseController {
      */
     public function show($id) {
         try {
+            $access = $this->getUserAccess();
+
             $sql = "SELECT a.*, jp.title as job_title
                     FROM job_applications a
                     LEFT JOIN job_postings jp ON jp.id = a.job_posting_id
@@ -123,6 +147,24 @@ class JobApplicationsController extends BaseController {
                 return ['error' => true, 'message' => 'Application not found'];
             }
 
+            // Scoping check
+            if ($access && !$access['is_admin']) {
+                $scope = $access['data_scopes']['view_applications'] ?? null;
+                if (!$scope && !in_array('view_applications', $access['permissions'])) {
+                    return response_error("ليس لديك صلاحية لعرض هذا الطلب", 403);
+                }
+
+                if ($scope === 'department') {
+                    $stmt = $this->db->prepare("SELECT department_id FROM job_postings WHERE id = :id");
+                    $stmt->execute([':id' => $data['job_posting_id']]);
+                    $jobDeptId = $stmt->fetchColumn();
+
+                    if ($access['department_id'] && $jobDeptId !== $access['department_id']) {
+                        return response_error("ليس لديك صلاحية لعرض طلبات خارج قسمك", 403);
+                    }
+                }
+            }
+
             return $this->processRow($data);
         } catch (Exception $e) {
             http_response_code(500);
@@ -131,15 +173,16 @@ class JobApplicationsController extends BaseController {
     }
 
     public function store($data) {
+        // Public submission allowed (no checkPermission here)
+        // unless you want to restrict who can post applications internally
+        
         // Handle CV file upload if present
         if (isset($_FILES['cv_file']) && $_FILES['cv_file']['error'] === UPLOAD_ERR_OK) {
             $data['cv_path'] = $this->handleCvUpload($_FILES['cv_file']);
         } elseif (isset($_FILES['cv']) && $_FILES['cv']['error'] === UPLOAD_ERR_OK) {
-            // Frontend is sending it as "cv"
             $data['cv_path'] = $this->handleCvUpload($_FILES['cv']);
         }
 
-        // Fix: BaseController defaults status to 'active', but our enum requires 'new'
         if (empty($data['status'])) {
             $data['status'] = 'new';
         }
@@ -151,12 +194,18 @@ class JobApplicationsController extends BaseController {
      * تحديث طلب توظيف مع دعم رفع CV جديد
      */
     public function update($id, $data) {
+        $this->checkPermission('edit_applications');
         // Handle CV file upload if present
         if (isset($_FILES['cv_file']) && $_FILES['cv_file']['error'] === UPLOAD_ERR_OK) {
             $data['cv_path'] = $this->handleCvUpload($_FILES['cv_file']);
         }
 
         return parent::update($id, $data);
+    }
+
+    public function destroy($id) {
+        $this->checkPermission('delete_applications');
+        return parent::destroy($id);
     }
 
     /**

@@ -7,6 +7,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/request.php';
 require_once __DIR__ . '/../helpers/audit.php';
+require_once __DIR__ . '/../helpers/response.php';
 
 abstract class BaseController {
     protected $db;
@@ -238,5 +239,82 @@ abstract class BaseController {
             $stmt->execute([':col' => $column]);
             return $stmt->fetch() !== false;
         } catch (Exception $e) { return false; }
+    }
+
+    /**
+     * Get current user access info
+     */
+    protected function getUserAccess() {
+        $userId = getCurrentUserId();
+        if (!$userId) return null;
+
+        static $access = null;
+        if ($access !== null) return $access;
+
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE id = :id");
+        $stmt->execute([':id' => $userId]);
+        $user = $stmt->fetch();
+
+        // Get role, permissions, data_scopes and employee_id
+        $stmt = $this->db->prepare("
+            SELECT r.permissions, r.data_scopes, ur.employee_id 
+            FROM user_roles ur
+            JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = :user_id AND ur.status = 'active'
+            LIMIT 1
+        ");
+        $stmt->execute([':user_id' => $userId]);
+        $roleData = $stmt->fetch();
+
+        // Get department_id if employee_id exists
+        $departmentId = null;
+        if ($roleData['employee_id'] ?? null) {
+            $stmt = $this->db->prepare("SELECT department_id FROM employees WHERE id = :id");
+            $stmt->execute([':id' => $roleData['employee_id']]);
+            $departmentId = $stmt->fetchColumn();
+        }
+
+        $permissionsData = $roleData['permissions'] ?? '';
+        $permissions = [];
+        if (is_array($permissionsData)) {
+            $permissions = $permissionsData;
+        } else if (is_string($permissionsData) && !empty($permissionsData)) {
+            $permissions = json_decode($permissionsData, true) ?: [];
+        }
+
+        $scopesData = $roleData['data_scopes'] ?? '';
+        $dataScopes = [];
+        if (is_array($scopesData)) {
+            $dataScopes = $scopesData;
+        } else if (is_string($scopesData) && !empty($scopesData)) {
+            $dataScopes = json_decode($scopesData, true) ?: [];
+        }
+
+        $access = [
+            'user' => $user,
+            'permissions' => $permissions,
+            'data_scopes' => $dataScopes,
+            'employee_id' => $roleData['employee_id'] ?? null,
+            'department_id' => $departmentId,
+            'is_admin' => ($user && $user['email'] === 'admin@ivory.com') || in_array('*', $permissions) || in_array('all', $permissions)
+        ];
+
+        return $access;
+    }
+
+    /**
+     * Check if user has permission
+     */
+    protected function checkPermission($permission) {
+        $access = $this->getUserAccess();
+        if (!$access) jsonError('Unauthorized', 401);
+        if ($access['is_admin']) return true;
+
+        $perms = is_array($permission) ? $permission : [$permission];
+        foreach ($perms as $p) {
+            if (in_array($p, $access['permissions'])) return true;
+        }
+
+        jsonError('Forbidden: Missing permission ' . (is_array($permission) ? implode(' or ', $permission) : $permission), 403);
     }
 }

@@ -9,6 +9,8 @@ import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { toast } from "sonner";
+import { useAuth } from "@/components/AuthProvider";
+import { PERMISSIONS } from "@/components/permissions";
 
 export default function InterviewTemplatesPage() {
     const [templates, setTemplates] = useState([]);
@@ -19,6 +21,7 @@ export default function InterviewTemplatesPage() {
     const [formData, setFormData] = useState({ name: "", description: "" });
     const [items, setItems] = useState([]);
     const [saving, setSaving] = useState(false);
+    const { hasPermission } = useAuth();
 
     useEffect(() => {
         loadData();
@@ -198,19 +201,23 @@ export default function InterviewTemplatesPage() {
             accessor: "actions",
             cell: (row) => (
                 <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
-                        <Edit className="w-4 h-4 ml-1" />
-                        تعديل
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(row)}
-                        className="text-red-600"
-                    >
-                        <Trash2 className="w-4 h-4 ml-1" />
-                        حذف
-                    </Button>
+                    {hasPermission(PERMISSIONS.EDIT_RECRUITMENT_TEMPLATE) && (
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
+                            <Edit className="w-4 h-4 ml-1" />
+                            تعديل
+                        </Button>
+                    )}
+                    {hasPermission(PERMISSIONS.DELETE_RECRUITMENT_TEMPLATE) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(row)}
+                            className="text-red-600"
+                        >
+                            <Trash2 className="w-4 h-4 ml-1" />
+                            حذف
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -230,8 +237,9 @@ export default function InterviewTemplatesPage() {
                 data={templates}
                 columns={columns}
                 loading={loading}
-                onAdd={handleAdd}
+                onAdd={hasPermission(PERMISSIONS.ADD_RECRUITMENT_TEMPLATE) ? handleAdd : null}
                 addButtonText="إنشاء قالب جديد"
+                showAdd={hasPermission(PERMISSIONS.ADD_RECRUITMENT_TEMPLATE)}
                 emptyMessage="لا توجد قوالب تقييم. قم بإنشاء قالب ليتم استخدامه في المقابلات."
                 searchPlaceholder="بحث في القوالب..."
             />

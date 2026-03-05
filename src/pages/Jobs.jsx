@@ -16,6 +16,8 @@ import DataTable from "@/components/ui/DataTable";
 import FormModal from "@/components/ui/FormModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { toast } from "sonner";
+import { useAuth } from "@/components/AuthProvider";
+import { PERMISSIONS } from "@/components/permissions";
 
 const STATUS_MAP = {
     draft: { label: "مسودة", color: "bg-gray-100 text-gray-700" },
@@ -39,6 +41,7 @@ export default function Jobs() {
     const [selectedJob, setSelectedJob] = useState(null);
     const [formData, setFormData] = useState({});
     const [saving, setSaving] = useState(false);
+    const { hasPermission } = useAuth();
 
     useEffect(() => {
         loadData();
@@ -173,19 +176,23 @@ export default function Jobs() {
             accessor: "actions",
             cell: (row) => (
                 <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
-                        <Edit className="w-4 h-4 ml-1" />
-                        تعديل
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(row)}
-                        className="text-red-600"
-                    >
-                        <Trash2 className="w-4 h-4 ml-1" />
-                        حذف
-                    </Button>
+                    {hasPermission(PERMISSIONS.EDIT_JOBS) && (
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(row)}>
+                            <Edit className="w-4 h-4 ml-1" />
+                            تعديل
+                        </Button>
+                    )}
+                    {hasPermission(PERMISSIONS.DELETE_JOBS) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(row)}
+                            className="text-red-600"
+                        >
+                            <Trash2 className="w-4 h-4 ml-1" />
+                            حذف
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -205,8 +212,9 @@ export default function Jobs() {
                 data={jobs}
                 columns={columns}
                 loading={loading}
-                onAdd={handleAdd}
+                onAdd={hasPermission(PERMISSIONS.CREATE_JOBS) ? handleAdd : null}
                 addButtonText="إضافة وظيفة"
+                showAdd={hasPermission(PERMISSIONS.CREATE_JOBS)}
                 emptyMessage="لا توجد وظائف معلنة حالياً"
                 searchPlaceholder="بحث في الوظائف..."
             />

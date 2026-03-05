@@ -159,6 +159,20 @@ const ALL_PERMISSIONS = [
   { code: "delete_violation", name: "حذف مخالفة", category: "violations", scope: true },
 
   { code: "force_approve", name: "الاعتماد النهائي الاستثنائي", category: "approvals", scope: false },
+
+  // الاستقطاب والتوظيف
+  { code: "view_jobs", name: "عرض الوظائف", category: "recruitment", scope: true },
+  { code: "create_jobs", name: "إضافة وظيفة", category: "recruitment", scope: false },
+  { code: "edit_jobs", name: "تعديل وظيفة", category: "recruitment", scope: true },
+  { code: "delete_jobs", name: "حذف وظيفة", category: "recruitment", scope: true },
+  { code: "view_applications", name: "عرض طلبات التوظيف", category: "recruitment", scope: true },
+  { code: "edit_applications", name: "فرز وتقييم الطلبات", category: "recruitment", scope: true },
+  { code: "delete_applications", name: "حذف طلبات التوظيف", category: "recruitment", scope: true },
+  { code: "view_interviews", name: "عرض المقابلات", category: "recruitment", scope: true },
+  { code: "create_interviews", name: "إجراء مقابلة", category: "recruitment", scope: false },
+  { code: "edit_interviews", name: "تعديل نتائج المقابلة", category: "recruitment", scope: true },
+  { code: "delete_interviews", name: "حذف المقابلات", category: "recruitment", scope: true },
+  { code: "manage_recruitment_templates", name: "إدارة قوالب التقييم", category: "recruitment", scope: false },
 ];
 
 const CATEGORIES = {
@@ -184,6 +198,7 @@ const CATEGORIES = {
   job_descriptions: "الأوصاف الوظيفية",
   violations: "المخالفات والجزاءات",
   approvals: "الاعتمادات الاستثنائية",
+  recruitment: "الاستقطاب والتوظيف",
 };
 
 export default function RolesPermissions() {
@@ -193,7 +208,14 @@ export default function RolesPermissions() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
-  const [formData, setFormData] = useState({ permissions: [], data_scopes: {} });
+  const [formData, setFormData] = useState({
+    name: "",
+    code: "",
+    description: "",
+    status: "active",
+    permissions: [],
+    data_scopes: {}
+  });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -213,7 +235,14 @@ export default function RolesPermissions() {
 
   const handleAdd = () => {
     setSelectedRole(null);
-    setFormData({ permissions: [], data_scopes: {}, status: "active" });
+    setFormData({
+      name: "",
+      code: "",
+      description: "",
+      status: "active",
+      permissions: [],
+      data_scopes: {}
+    });
     setShowForm(true);
   };
 
@@ -370,7 +399,7 @@ export default function RolesPermissions() {
   ];
 
   return (
-    <ProtectedRoute permission={PERMISSIONS.MANAGE_ROLES}>
+    <ProtectedRoute permission={PERMISSIONS.MANAGE_ROLES} fallback={null}>
       <div className="space-y-6" dir="rtl">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>

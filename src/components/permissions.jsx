@@ -163,6 +163,21 @@ export const PERMISSIONS = {
   // أخرى
   CHECKIN_CHECKOUT: 'checkin_checkout',
   VIEW_DASHBOARD: 'view_dashboard',
+
+  // الاستقطاب والتوظيف (Recruitment - ATS)
+  // الاستقطاب والتوظيف (Recruitment - ATS)
+  VIEW_JOBS: 'view_jobs',
+  CREATE_JOBS: 'create_jobs',
+  EDIT_JOBS: 'edit_jobs',
+  DELETE_JOBS: 'delete_jobs',
+  VIEW_APPLICATIONS: 'view_applications',
+  EDIT_APPLICATIONS: 'edit_applications', // For status updates/screening
+  DELETE_APPLICATIONS: 'delete_applications',
+  VIEW_INTERVIEWS: 'view_interviews',
+  CREATE_INTERVIEWS: 'create_interviews',
+  EDIT_INTERVIEWS: 'edit_interviews',
+  DELETE_INTERVIEWS: 'delete_interviews',
+  MANAGE_RECRUITMENT_TEMPLATES: 'manage_recruitment_templates',
 };
 
 // تعيين الصلاحيات لكل دور
@@ -214,6 +229,14 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.VIEW_DEPARTMENT_VIOLATIONS,
     PERMISSIONS.CREATE_VIOLATION,
     PERMISSIONS.VIEW_VIOLATIONS,
+
+    // التوظيف للمدراء
+    // التوظيف للمدراء
+    PERMISSIONS.VIEW_JOBS,
+    PERMISSIONS.VIEW_APPLICATIONS,
+    PERMISSIONS.VIEW_INTERVIEWS,
+    PERMISSIONS.CREATE_INTERVIEWS,
+    PERMISSIONS.EDIT_INTERVIEWS,
   ],
 
   [ROLES.EMPLOYEE]: [
