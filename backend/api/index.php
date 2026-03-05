@@ -128,6 +128,11 @@ $entities = [
     'violation-types' => 'ViolationTypesController',
     'penalty-policies' => 'PenaltyPoliciesController',
     'employee-violations' => 'EmployeeViolationsController',
+    // ATS - Applicant Tracking System
+    'job-postings' => 'JobPostingsController',
+    'job-applications' => 'JobApplicationsController',
+    'interview-templates' => 'InterviewTemplatesController',
+    'interviews' => 'InterviewsController',
 ];
 
 if (!$entity) {

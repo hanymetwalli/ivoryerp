@@ -19,6 +19,7 @@ import {
   User,
   Building2,
   Briefcase,
+  ClipboardList,
   GraduationCap,
   Bell,
   MapPin,
@@ -116,6 +117,16 @@ function LayoutContent({ children, currentPageName }) {
       items: [
         { name: "Violations", icon: AlertCircle, path: createPageUrl("Violations"), label: "سجل المخالفات", permission: PERMISSIONS.VIEW_ALL_VIOLATIONS },
         { name: "PenaltySettings", icon: Shield, path: createPageUrl("PenaltySettings"), label: "لائحة الجزاءات", permission: PERMISSIONS.MANAGE_PENALTY_SETTINGS },
+      ]
+    },
+    {
+      label: "الاستقطاب والتوظيف",
+      icon: Briefcase,
+      items: [
+        { name: "Jobs", icon: Briefcase, path: createPageUrl("Jobs"), label: "الوظائف" },
+        { name: "InterviewTemplatesPage", icon: ClipboardList, path: createPageUrl("InterviewTemplatesPage"), label: "قوالب المقابلات" },
+        { name: "Applications", icon: Users, path: createPageUrl("Applications"), label: "طلبات التوظيف" },
+        { name: "Careers", icon: Briefcase, path: createPageUrl("Careers"), label: "بوابة التوظيف (عامة)" },
       ]
     },
     { name: "Reports", icon: BarChart3, path: createPageUrl("Reports"), label: "التقارير", permission: PERMISSIONS.VIEW_REPORTS },

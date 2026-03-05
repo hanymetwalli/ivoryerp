@@ -102,17 +102,19 @@ class Entity {
 
     // Create record
     async create(data) {
+        const isFormData = data instanceof FormData;
         return await apiCall(this.endpoint, {
             method: 'POST',
-            body: JSON.stringify(data),
+            body: isFormData ? data : JSON.stringify(data),
         });
     }
 
     // Update record
     async update(id, data) {
+        const isFormData = data instanceof FormData;
         return await apiCall(`${this.endpoint}/${id}`, {
             method: 'PUT',
-            body: JSON.stringify(data),
+            body: isFormData ? data : JSON.stringify(data),
         });
     }
 
@@ -298,6 +300,11 @@ const ivoryClient = {
         ViolationType: new Entity('violation-types'),
         PenaltyPolicy: new Entity('penalty-policies'),
         EmployeeViolation: new Entity('employee-violations'),
+        // ATS - Applicant Tracking System
+        JobPosting: new Entity('job-postings'),
+        JobApplication: new Entity('job-applications'),
+        InterviewTemplate: new Entity('interview-templates'),
+        Interview: new Entity('interviews'),
     },
 
     functions: new Functions(),

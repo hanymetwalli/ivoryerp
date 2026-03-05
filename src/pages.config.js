@@ -78,6 +78,10 @@ import Login from './pages/Login';
 import Permissions from './pages/Permissions';
 import PenaltySettings from './pages/PenaltySettings';
 import Violations from './pages/Violations';
+import Jobs from './pages/Jobs';
+import InterviewTemplatesPage from './pages/InterviewTemplatesPage';
+import Careers from './pages/Careers';
+import Applications from './pages/Applications';
 import __Layout from './Layout.jsx';
 
 
@@ -113,6 +117,10 @@ export const PAGES = {
     "Permissions": Permissions,
     "PenaltySettings": PenaltySettings,
     "Violations": Violations,
+    "Jobs": Jobs,
+    "InterviewTemplatesPage": InterviewTemplatesPage,
+    "Careers": Careers,
+    "Applications": Applications,
 }
 
 export const pagesConfig = {

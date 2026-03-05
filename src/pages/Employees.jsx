@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
   Users,
@@ -87,9 +87,37 @@ export default function Employees() {
     loading: authLoading
   } = useAuth();
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   useEffect(() => {
     if (!authLoading) {
-      loadData();
+      loadData().then((loadedEmployees) => {
+        // Handle incoming candidate data from Applications.jsx
+        if (location.state?.candidateData) {
+          const candidate = location.state.candidateData;
+
+          let parsedPhones = [];
+          try {
+            if (typeof candidate.phones === 'string') parsedPhones = JSON.parse(candidate.phones);
+            else if (Array.isArray(candidate.phones)) parsedPhones = candidate.phones;
+          } catch (e) { }
+
+          setFormData({
+            status: "active",
+            gender: candidate.gender === 'female' ? "female" : "male",
+            employee_number: generateEmployeeNumber(loadedEmployees || []), // pass the newly loaded
+            full_name: candidate.full_name || "",
+            email: candidate.email || "",
+            phone: parsedPhones[0] || "",
+            documents: [],
+          });
+          setShowForm(true);
+
+          // Clear state so it doesn't reopen on refresh
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      });
     }
   }, [authLoading, currentUser, userEmployee, filterDept, filterLocation]);
 
@@ -149,14 +177,17 @@ export default function Employees() {
       // else: dataScope === 'all' - المدير العام يرى الكل
 
       setFilteredEmployees(filtered);
+      return empData; // Return for the chain
     } catch (error) {
       console.error("Error loading data:", error);
+      return [];
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const generateEmployeeNumber = () => {
-    const maxNumber = employees.reduce((max, emp) => {
+  const generateEmployeeNumber = (empList = employees) => {
+    const maxNumber = empList.reduce((max, emp) => {
       const match = emp.employee_number?.match(/EMP-(\d+)/);
       return match ? Math.max(max, parseInt(match[1])) : max;
     }, 0);
@@ -168,7 +199,7 @@ export default function Employees() {
     setFormData({
       status: "active",
       gender: "male",
-      employee_number: generateEmployeeNumber(),
+      employee_number: generateEmployeeNumber(employees),
       documents: [],
     });
     setShowForm(true);

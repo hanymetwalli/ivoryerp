@@ -16,6 +16,7 @@ abstract class BaseController {
     protected $searchable = [];
     protected $defaultSort = 'id'; 
     protected $defaultOrder = 'DESC';
+    protected $casts = [];
     
     public function __construct() {
         $this->db = getDB();
@@ -184,6 +185,19 @@ abstract class BaseController {
         foreach ($row as $k => $v) {
             if ($v === null) continue;
             
+            // Explicit casting if defined
+            if (isset($this->casts[$k])) {
+                if ($this->casts[$k] === 'array') {
+                    if (is_string($v)) {
+                        $decoded = json_decode($v, true);
+                        $row[$k] = is_array($decoded) ? $decoded : [];
+                    } elseif (!is_array($v)) {
+                        $row[$k] = [];
+                    }
+                    continue; // Skip further automatic processing for explicitly casted fields
+                }
+            }
+
             // 1. Handle JSON (Old-school PHP compatible check)
             if (is_string($v) && $v !== '' && ($v[0] === '{' || $v[0] === '[')) {
                 $decoded = json_decode($v, true);
