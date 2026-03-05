@@ -247,7 +247,7 @@ export default function Approvals() {
                                                     size="sm"
                                                     className="border-blue-200 text-blue-700 bg-white hover:bg-blue-50 flex items-center gap-2"
                                                     onClick={() => {
-                                                        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost/ivory_hr/v4/32/backend';
+                                                        const apiBase = import.meta.env.VITE_API_URL;
                                                         const baseUrl = apiBase.replace('/backend', '').replace('/api', '');
                                                         window.open(`${baseUrl}/${selectedStep.details.report_attachment}`, '_blank');
                                                     }}

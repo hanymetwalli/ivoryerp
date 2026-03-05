@@ -3,11 +3,11 @@
  * Local PHP Backend Client (replaces base44)
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api-local';
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 // Generic API call function
 async function apiCall(endpoint, options = {}) {
-    const url = `${API_BASE_URL}/${endpoint}`;
+    const url = `${BASE_URL}/${endpoint}`;
 
     const token = localStorage.getItem('auth_token');
     const headers = {
@@ -336,7 +336,7 @@ const ivoryClient = {
                 const formData = new FormData();
                 formData.append('file', file);
 
-                const response = await fetch(`${API_BASE_URL}/upload.php`, {
+                const response = await fetch(`${BASE_URL}/upload.php`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
